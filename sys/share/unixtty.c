@@ -36,7 +36,7 @@
 #define termstruct termio
 #endif
 #endif /* POSIX_TYPES */
-#ifdef LINUX
+#if defined(LINUX) && !defined(ANDROID)
 #include <sys/ioctl.h>
 #include <curses.h>
 #endif
