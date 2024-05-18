@@ -245,7 +245,7 @@
 #  ifdef MACOS
 #   define CRASHREPORT "/usr/bin/open"
 #  endif
-#  ifdef __linux__
+#  if defined(__linux__) && !defined(ANDROID)
 #   define CRASHREPORT "/usr/bin/xdg-open"
        /* Define this if the terminal is filled with useless error messages
         * when the browser launches. */

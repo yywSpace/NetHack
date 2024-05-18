@@ -24,8 +24,10 @@
 #define DUMPLOG_FILE "%n.%d.dumplog.txt"
 #endif
 
-//#undef MAIL
-//#undef DEF_PAGER
+#undef DLB
+
+#undef MAIL
+#undef DEF_PAGER
 #undef DEF_MAILREADER
 
 #define ASCIIGRAPH
