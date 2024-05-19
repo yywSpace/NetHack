@@ -34,7 +34,8 @@
 
 #define NO_SIGNAL
 
-#define SELECTSAVED
+// 用自己的存档选择实现，不用默认的
+// #define SELECTSAVED
 
 #define USER_SOUNDS
 // #define CHANGE_COLOR
