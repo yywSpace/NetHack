@@ -19,10 +19,12 @@
 
 #undef SHELL /* we do not support the '!' command */
 
-#ifdef DUMPLOG
-#undef DUMPLOG_FILE
-#define DUMPLOG_FILE "%n.%d.dumplog.txt"
-#endif
+#define NOCWD_ASSUMPTIONS /* Allow paths to be specified for HACKDIR,      \
+                             LEVELDIR, SAVEDIR, BONESDIR, DATADIR,         \
+                             SCOREDIR, LOCKDIR, CONFIGDIR, and TROUBLEDIR. \
+                             */
+
+#define DUMPLOG
 
 #undef DLB
 
@@ -34,7 +36,7 @@
 
 #define NO_SIGNAL
 
-// 用自己的存档选择实现，不用默认的
+// use implementation in android not default
 // #define SELECTSAVED
 
 #define USER_SOUNDS
