@@ -1,4 +1,4 @@
-/* NetHack 3.7	mon.c	$NHDT-Date: 1706079843 2024/01/24 07:04:03 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.549 $ */
+/* NetHack 3.7	mon.c	$NHDT-Date: 1717570485 2024/06/05 06:54:45 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.573 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Derek S. Ray, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -75,23 +75,20 @@ sanity_check_single_mon(
                        mtmp->mnum, mndx, msg);
             mtmp->mnum = mndx;
         }
-#if 0   /*
-         * Gremlins don't obey the (mhpmax >= m_lev) rule so disable
-         * this check, at least for the time being.  We could skip it
-         * when the cloned flag is set, but the original gremlin would
-         * still be an issue.
-         */
         /* check before DEADMONSTER() because dead monsters should still
            have sane mhpmax */
         if (mtmp->mhpmax < 1
+            /* Gremlins don't obey the (mhpmax >= m_lev) rule so disable
+             * this check, at least for the time being.  We could skip it
+             * when the cloned flag is set, but the original gremlin would
+             * still be an issue.
             || mtmp->mhpmax < (int) mtmp->m_lev
+             */
             || mtmp->mhp > mtmp->mhpmax)
-            impossible(
-                     "%s: level %d monster #%u [%s] has %d cur HP, %d max HP",
-                       msg, (int) mtmp->m_lev,
+            impossible("%s: level %d %s #%u [%s] has %d cur HP, %d max HP",
+                       msg, (int) mtmp->m_lev, mptr->pmnames[NEUTRAL],
                        mtmp->m_id, fmt_ptr((genericptr_t) mtmp),
                        mtmp->mhp, mtmp->mhpmax);
-#endif
         if (DEADMONSTER(mtmp)) {
 #if 0
             /* bad if not fmon list or if not vault guard */
@@ -1405,6 +1402,8 @@ m_consume_obj(struct monst *mtmp, struct obj *otmp)
             mcureblindness(mtmp, canseemon(mtmp));
         if (ispet && deadmimic)
             quickmimic(mtmp);
+        if (otmp->otyp == EGG && corpsenm == PM_PYROLISK)
+            explode(mtmp->mx, mtmp->my, -11, d(3, 6), 0, EXPL_FIERY);
         if (corpsenm != NON_PM)
             mon_givit(mtmp, &mons[corpsenm]);
     }
@@ -1685,33 +1684,28 @@ mon_give_prop(struct monst *mtmp, int prop)
        control or whatever, ignore it. */
     switch (prop) {
     case FIRE_RES:
-        intrinsic = MR_FIRE;
         msg = "%s shivers slightly.";
         break;
     case COLD_RES:
-        intrinsic = MR_COLD;
         msg = "%s looks quite warm.";
         break;
     case SLEEP_RES:
-        intrinsic = MR_SLEEP;
         msg = "%s looks wide awake.";
         break;
     case DISINT_RES:
-        intrinsic = MR_DISINT;
         msg = "%s looks very firm.";
         break;
     case SHOCK_RES:
-        intrinsic = MR_ELEC;
         msg = "%s crackles with static electricity.";
         break;
     case POISON_RES:
-        intrinsic = MR_POISON;
         msg = "%s looks healthy.";
         break;
     default:
         return; /* can't give it */
         break;
     }
+    intrinsic = res_to_mr(prop);
 
     /* Don't give message if it already had this property intrinsically, but
        still do grant the intrinsic if it only had it from mresists.
@@ -1736,6 +1730,9 @@ mon_givit(struct monst *mtmp, struct permonst *ptr)
 {
     int prop = corpse_intrinsic(ptr);
     boolean vis = canseemon(mtmp);
+
+    if (DEADMONSTER(mtmp))
+        return;
 
     if (ptr == &mons[PM_STALKER]) {
         /*
@@ -3896,11 +3893,9 @@ mnearto(
         return res;
 
     if (move_other && (othermon = m_at(x, y)) != 0) {
-        if (othermon->wormno)
-            remove_worm(othermon);
-        else
-            remove_monster(x, y);
-
+        /* take othermon off the map; it might end up immediately returning
+           but for the moment it is leaving */
+        mon_leaving_level(othermon);
         othermon->mx = othermon->my = 0; /* 'othermon' is not on the map */
         othermon->mstate |= MON_OFFMAP;
     }
@@ -5037,8 +5032,11 @@ mgender_from_permonst(
     } else if (is_female(mdat)) {
         mtmp->female = TRUE;
     } else if (!is_neuter(mdat)) {
-        /* usually leave as-is; same chance to change as polymorphing hero */
-        if (!rn2(10))
+        /* usually leave as-is; same chance to change as polymorphing hero;
+           vampires use controlled shapechange (from their perspective, even
+           if it is random from the player's perspective) and don't undergo
+           gender change */
+        if (!rn2(10) && !(is_vampire(mdat) || is_vampshifter(mtmp)))
             mtmp->female = !mtmp->female;
     }
 }
@@ -5283,6 +5281,20 @@ newcham(
     }
     if (mtmp == u.usteed)
         poly_steed(mtmp, olddata);
+
+    /* old form might not have been affected by Elbereth but perhaps the
+       new form is */
+    if (gc.context.mon_moving) {
+        /* give 'mtmp' a new chance to pinpoint hero's location */
+        if (!u_at(mtmp->mux, mtmp->muy))
+            set_apparxy(mtmp);
+        /* if hero is on Elbereth or scare monster, mtmp in new form might
+           become scared */
+        if (!mtmp->mpeaceful
+            && onscary(mtmp->mux, mtmp->muy, mtmp)
+            && monnear(mtmp, mtmp->mux, mtmp->muy))
+            monflee(mtmp, rn1(9, 2), TRUE, TRUE); /* 2..10 turns */
+    }
 
     return 1;
 }
