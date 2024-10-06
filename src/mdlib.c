@@ -224,6 +224,10 @@ static struct soundlib_information soundlib_opts[] = {
     { soundlib_qtsound, "soundlib_qtsound",
         "https://doc.qt.io/qt-5/qsoundeffect.html", FALSE },
 #endif
+#ifdef SND_LIB_ANDSOUND
+        { soundlib_andsound, "soundlib_andsound",
+        "", FALSE },
+#endif
     { 0, 0, 0, FALSE },
 };
 #endif  /* !MAKEDEFS_C */

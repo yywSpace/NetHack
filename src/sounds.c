@@ -1713,7 +1713,9 @@ extern struct sound_procs macsound_procs;
 #ifdef SND_LIB_QTSOUND
 extern struct sound_procs qtsound_procs;
 #endif
-
+#ifdef SND_LIB_ANDSOUND
+extern struct sound_procs andsound_procs;
+#endif
 static struct sound_procs nosound_procs = {
     SOUNDID(nosound),
     0L,
@@ -1763,6 +1765,9 @@ static struct sound_choices {
 #endif
 #ifdef SND_LIB_QTSOUND
     { &qtsound_procs },
+#endif
+#ifdef SND_LIB_ANDSOUND
+    { &andsound_procs },
 #endif
 };
 
