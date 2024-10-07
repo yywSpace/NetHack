@@ -226,7 +226,7 @@ static struct soundlib_information soundlib_opts[] = {
 #endif
 #ifdef SND_LIB_ANDSOUND
         { soundlib_andsound, "soundlib_andsound",
-        "", FALSE },
+        "https://developer.android.google.cn/reference/android/media/SoundPool", FALSE },
 #endif
     { 0, 0, 0, FALSE },
 };
