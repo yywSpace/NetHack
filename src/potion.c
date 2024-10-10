@@ -1,4 +1,4 @@
-/* NetHack 3.7	potion.c	$NHDT-Date: 1716668700 2024/05/25 20:25:00 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.265 $ */
+/* NetHack 3.7	potion.c	$NHDT-Date: 1726356849 2024/09/14 23:34:09 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.270 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2013. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -41,6 +41,7 @@ staticfn int dip_ok(struct obj *);
 staticfn int dip_hands_ok(struct obj *);
 staticfn void hold_potion(struct obj *, const char *, const char *,
                         const char *);
+staticfn void poof(struct obj *);
 staticfn int potion_dip(struct obj *obj, struct obj *potion);
 
 /* used to indicate whether quaff or dip has skipped an opportunity to
@@ -2260,29 +2261,28 @@ dodip(void)
     shortestname = (is_hands || is_plural(obj) || pair_of(obj)) ? "them"
                                                                 : "it";
     drink_ok_extra = 0;
+    /*
+     * Bypass safe_qbuf() since it doesn't handle varying suffix without
+     * an awful lot of support work.  Format the object once, even though
+     * the fountain and pool prompts offer a lot more room for it.
+     * 3.6.0 used thesimpleoname() unconditionally, which posed no risk
+     * of buffer overflow but drew bug reports because it omits user-
+     * supplied type name.
+     * getobj: "What do you want to dip <the object> into? [xyz or ?*] "
+     */
+    if (is_hands) {
+        Snprintf(obuf, sizeof obuf, "your %s", makeplural(body_part(HAND)));
+    } else {
+        Strcpy(obuf, short_oname(obj, doname, thesimpleoname,
+                                 /* 128 - (24 + 54 + 1) leaves 49 for
+                                    <object> */
+                                 QBUFSZ - sizeof "What do you want to dip\
+ into? [abdeghjkmnpqstvwyzBCEFHIKLNOQRTUWXZ#-# or ?*] "));
+    }
+
     /* preceding #dip with 'm' skips the possibility of dipping into pools,
        fountains, and sinks plus the extra prompting which those entail */
     if (!iflags.menu_requested) {
-        /*
-         * Bypass safe_qbuf() since it doesn't handle varying suffix without
-         * an awful lot of support work.  Format the object once, even though
-         * the fountain and pool prompts offer a lot more room for it.
-         * 3.6.0 used thesimpleoname() unconditionally, which posed no risk
-         * of buffer overflow but drew bug reports because it omits user-
-         * supplied type name.
-         * getobj: "What do you want to dip <the object> into? [xyz or ?*] "
-         */
-        if (is_hands) {
-            Snprintf(obuf, sizeof(obuf), "your %s",
-                     makeplural(body_part(HAND)));
-        } else {
-            Strcpy(obuf, short_oname(obj, doname, thesimpleoname,
-                                     /* 128 - (24 + 54 + 1) leaves 49 for
-                                        <object> */
-                                     QBUFSZ - sizeof "What do you want to dip\
- into? [abdeghjkmnpqstvwyzBCEFHIKLNOQRTUWXZ#-# or ?*] "));
-        }
-
         /* Is there a fountain to dip into here? */
         if (!can_reach_floor(FALSE)) {
             ; /* can't dip something into fountain or pool if can't reach */
@@ -2379,6 +2379,14 @@ dip_into(void)
     return potion_dip(obj, potion);
 }
 
+staticfn void
+poof(struct obj *potion)
+{
+    if (potion->dknown)
+        trycall(potion);
+    useup(potion);
+}
+
 /* called by dodip() or dip_into() after obj and potion have been chosen */
 staticfn int
 potion_dip(struct obj *obj, struct obj *potion)
@@ -2403,8 +2411,10 @@ potion_dip(struct obj *obj, struct obj *potion)
         boolean useeit = !Blind || (obj == ublindf && Blindfolded_only);
         const char *obj_glows = Yobjnam2(obj, "glow");
 
-        if (H2Opotion_dip(potion, obj, useeit, obj_glows))
-            goto poof;
+        if (H2Opotion_dip(potion, obj, useeit, obj_glows)) {
+            poof(potion);
+            return ECMD_TIME;
+        }
     } else if (obj->otyp == POT_POLYMORPH || potion->otyp == POT_POLYMORPH) {
         /* some objects can't be polymorphed */
         if (obj_unpolyable(obj->otyp == POT_POLYMORPH ? potion : obj)) {
@@ -2434,7 +2444,8 @@ potion_dip(struct obj *obj, struct obj *potion)
                 return ECMD_TIME;
             } else {
                 pline1(nothing_seems_to_happen);
-                goto poof;
+                poof(potion);
+                return ECMD_TIME;
             }
         }
         potion->in_use = FALSE; /* didn't go poof */
@@ -2561,7 +2572,8 @@ potion_dip(struct obj *obj, struct obj *potion)
     if (potion->otyp == POT_WATER && obj->otyp == TOWEL) {
         pline_The("towel soaks it up!");
         /* wetting towel already done via water_damage() in H2Opotion_dip */
-        goto poof;
+        poof(potion);
+        return ECMD_TIME;
     }
 
     if (is_poisonable(obj)) {
@@ -2574,19 +2586,23 @@ potion_dip(struct obj *obj, struct obj *potion)
                 Strcpy(buf, The(xname(potion)));
             pline("%s forms a coating on %s.", buf, the(xname(obj)));
             obj->opoisoned = TRUE;
-            goto poof;
+            poof(potion);
+            return ECMD_TIME;
         } else if (obj->opoisoned && (potion->otyp == POT_HEALING
                                       || potion->otyp == POT_EXTRA_HEALING
                                       || potion->otyp == POT_FULL_HEALING)) {
             pline("A coating wears off %s.", the(xname(obj)));
             obj->opoisoned = 0;
-            goto poof;
+            poof(potion);
+            return ECMD_TIME;
         }
     }
 
     if (potion->otyp == POT_ACID) {
-        if (erode_obj(obj, 0, ERODE_CORRODE, EF_GREASE) != ER_NOTHING)
-            goto poof;
+        if (erode_obj(obj, 0, ERODE_CORRODE, EF_GREASE) != ER_NOTHING) {
+            poof(potion);
+            return ECMD_TIME;
+        }
     }
 
     if (potion->otyp == POT_OIL) {
@@ -2735,12 +2751,6 @@ potion_dip(struct obj *obj, struct obj *potion)
     }
 
     pline("Interesting...");
-    return ECMD_TIME;
-
- poof:
-    if (potion->dknown)
-        trycall(potion);
-    useup(potion);
     return ECMD_TIME;
 }
 

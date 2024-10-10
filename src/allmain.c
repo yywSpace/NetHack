@@ -1,4 +1,4 @@
-/* NetHack 3.7	allmain.c	$NHDT-Date: 1704225560 2024/01/02 19:59:20 $  $NHDT-Branch: keni-luabits2 $:$NHDT-Revision: 1.238 $ */
+/* NetHack 3.7	allmain.c	$NHDT-Date: 1726894914 2024/09/21 05:01:54 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.261 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -320,7 +320,8 @@ moveloop_core(void)
                     }
                 }
 
-                if (!svl.level.flags.noautosearch && Searching && gm.multi >= 0)
+                if (Searching && !svl.level.flags.noautosearch
+                    && gm.multi >= 0)
                     (void) dosearch0(1);
                 if (Warning)
                     warnreveal();
@@ -425,11 +426,14 @@ moveloop_core(void)
             see_traps();
             if (u.uswallow)
                 swallowed(0);
-        } else if (Unblind_telepat) {
+        } else if (Unblind_telepat || Warning || Warn_of_mon
+                   /* this is needed for the case where you saw a monster
+                      due to being next to it while it's in a gas cloud
+                      and then you moved away; it should no longer be seen
+                      when that happens, even if it hasn't moved */
+                   || any_visible_region()) { /* TODO: optimize this */
             see_monsters();
-        } else if (Warning || Warn_of_mon)
-            see_monsters();
-
+        }
         if (gv.vision_full_recalc)
             vision_recalc(0); /* vision! */
     }
@@ -748,7 +752,7 @@ newgame(void)
                        * any artifacts */
     u_init();
 
-    l_nhcore_init();  /* create a Lua state that lasts until the end of the game */
+    l_nhcore_init();  /* create a Lua state that lasts until end of game */
     reset_glyphmap(gm_newgame);
 #ifndef NO_SIGNAL
     (void) signal(SIGINT, (SIG_RET_TYPE) done1);
@@ -773,7 +777,7 @@ newgame(void)
 
     if (flags.legacy) {
         flush_screen(1);
-        com_pager("legacy");
+        com_pager(u.uroleplay.pauper ? "pauper_legacy" : "legacy");
     }
 
     urealtime.realtime = 0L;
@@ -793,7 +797,7 @@ newgame(void)
     return;
 }
 
-/* show "welcome [back] to nethack" message at program startup */
+/* show "welcome [back] to NetHack" message at program startup */
 void
 welcome(boolean new_game) /* false => restoring an old game */
 {
@@ -825,11 +829,12 @@ welcome(boolean new_game) /* false => restoring an old game */
         Sprintf(eos(buf), " %s", align_str(u.ualignbase[A_ORIGINAL]));
     if (!gu.urole.name.f
         && (new_game
-                ? (gu.urole.allow & ROLE_GENDMASK) == (ROLE_MALE | ROLE_FEMALE)
-                : currentgend != flags.initgend))
+            ? (gu.urole.allow & ROLE_GENDMASK) == (ROLE_MALE | ROLE_FEMALE)
+            : currentgend != flags.initgend))
         Sprintf(eos(buf), " %s", genders[currentgend].adj);
     Sprintf(eos(buf), " %s %s", gu.urace.adj,
-            (currentgend && gu.urole.name.f) ? gu.urole.name.f : gu.urole.name.m);
+            (currentgend && gu.urole.name.f) ? gu.urole.name.f
+                                             : gu.urole.name.m);
 
     pline(new_game ? "%s %s, welcome to NetHack!  You are a%s."
                    : "%s %s, the%s, welcome back to NetHack!",
@@ -1239,11 +1244,13 @@ dump_enums(void)
         objclass_syms_dump,
         arti_enum_dump,
     };
-    static const char *const pfx[NUM_ENUM_DUMPS] = { "PM_", "", "",
-                                                     "", "", "", "",
-                                                     "", "", "" };
+    static const char *const pfx[NUM_ENUM_DUMPS] = {
+        "PM_", "", "", "", "", "", "", "", "", ""
+    };
     /* 0 = dump numerically only, 1 = add 'char' comment */
-    static const int dumpflgs[NUM_ENUM_DUMPS] = { 0, 0, 0, 0, 0, 1, 1, 0, 0, 0 };
+    static const int dumpflgs[NUM_ENUM_DUMPS] = {
+        0, 0, 0, 0, 0, 1, 1, 0, 0, 0
+    };
     static int szd[NUM_ENUM_DUMPS] = { SIZE(monsdump), SIZE(objdump),
                                        SIZE(omdump), SIZE(defsym_cmap_dump),
                                        SIZE(defsym_mon_syms_dump),

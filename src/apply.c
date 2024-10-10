@@ -947,7 +947,8 @@ check_leash(coordxy x, coordxy y)
                     if (!DEADMONSTER(mtmp))
                         u.uconduct.killer = save_pacifism;
                 } else {
-                    pline_mon(mtmp, "%s is choked by the leash!", Monnam(mtmp));
+                    pline_mon(mtmp, "%s is choked by the leash!",
+                              Monnam(mtmp));
                     /* tameness eventually drops to 1 here (never 0) */
                     if (mtmp->mtame && rn2(mtmp->mtame))
                         mtmp->mtame--;
@@ -984,7 +985,7 @@ beautiful(void)
     const char *res;
     int cha = ACURR(A_CHA);
 
-    /* don't bother complaining about the sexism; nethack is not real life */
+    /* don't bother complaining about the sexism; NetHack is not real life */
     res = ((cha >= 25) ? "sublime" /* 25 is the maximum possible */
            : (cha >= 19) ? "splendorous" /* note: not "splendiferous" */
              : (cha >= 16) ? ((poly_gender() == 1) ? "beautiful" : "handsome")
@@ -1428,7 +1429,8 @@ use_candle(struct obj **optr)
         else if (!otmp->lamplit && was_lamplit)
             pline("%s out.", (obj->quan > 1L) ? "They go" : "It goes");
         if (obj->unpaid) {
-            struct monst *shkp VOICEONLY = shop_keeper(*in_rooms(u.ux, u.uy, SHOPBASE));
+            struct monst *shkp VOICEONLY
+                               = shop_keeper(*in_rooms(u.ux, u.uy, SHOPBASE));
 
             SetVoice(shkp, 0, 80, 0);
             verbalize("You %s %s, you bought %s!",
@@ -1590,7 +1592,8 @@ catch_lit(struct obj *obj)
         if (obj->otyp == POT_OIL)
             makeknown(obj->otyp);
         if (carried(obj) && obj->unpaid && costly_spot(u.ux, u.uy)) {
-            struct monst *shkp VOICEONLY = shop_keeper(*in_rooms(u.ux, u.uy, SHOPBASE));
+            struct monst *shkp VOICEONLY
+                               = shop_keeper(*in_rooms(u.ux, u.uy, SHOPBASE));
 
             /* if it catches while you have it, then it's your tough luck */
             check_unpaid(obj);
@@ -1670,7 +1673,8 @@ use_lamp(struct obj *obj)
             if (obj->unpaid && costly_spot(u.ux, u.uy)
                 && obj->age == 20L * (long) objects[obj->otyp].oc_cost) {
                 const char *ithem = (obj->quan > 1L) ? "them" : "it";
-                struct monst *shkp VOICEONLY = shop_keeper(*in_rooms(u.ux, u.uy, SHOPBASE));
+                struct monst *shkp VOICEONLY
+                               = shop_keeper(*in_rooms(u.ux, u.uy, SHOPBASE));
 
                 SetVoice(shkp, 0, 80, 0);
                 verbalize("You burn %s, you bought %s!", ithem, ithem);
@@ -3369,7 +3373,7 @@ use_pole(struct obj *obj, boolean autohit)
      *      .52125.
      *      .85458.
      *      ...9...
-     *  (Note: no roles in nethack can become expert or better
+     *  (Note: no roles in NetHack can become expert or better
      *  for polearm skill; Yeoman in slash'em can become expert.)
      */
     min_range = 4;
@@ -3700,7 +3704,7 @@ use_grapple(struct obj *obj)
         int clr = NO_COLOR;
 
         any = cg.zeroany; /* set all bits to zero */
-        any.a_int = 1; /* use index+1 (cant use 0) as identifier */
+        any.a_int = 1; /* use index+1 (can't use 0) as identifier */
         start_menu(tmpwin, MENU_BEHAVE_STANDARD);
         any.a_int++;
         Sprintf(buf, "an object on the %s", surface(cc.x, cc.y));

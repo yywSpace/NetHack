@@ -1,4 +1,4 @@
-/* NetHack 3.7	zap.c	$NHDT-Date: 1715284462 2024/05/09 19:54:22 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.539 $ */
+/* NetHack 3.7	zap.c	$NHDT-Date: 1723946858 2024/08/18 02:07:38 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.542 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Robert Patrick Rankin, 2013. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -218,8 +218,8 @@ bhitm(struct monst *mtmp, struct obj *otmp)
             mon_adjust_speed(mtmp, 1, otmp);
             check_gear_next_turn(mtmp); /* might want speed boots */
         }
-        if (mtmp->mtame)
-            helpful_gesture = TRUE;
+        /* wake but don't anger a peaceful target */
+        helpful_gesture = TRUE;
         break;
     case WAN_UNDEAD_TURNING:
     case SPE_TURN_UNDEAD:
@@ -2483,7 +2483,7 @@ do_enlightenment_effect(void)
 
 /*
  * zapnodir - zaps a NODIR wand/spell.
- * added by GAN 11/03/86
+ * Won't get here if wand has no charges (unless wresting 1 last charge).
  */
 void
 zapnodir(struct obj *obj)
@@ -2493,36 +2493,45 @@ zapnodir(struct obj *obj)
     switch (obj->otyp) {
     case WAN_LIGHT:
     case SPE_LIGHT:
+        /* FIXME? wand of light becoming discovered should be contingent upon
+           seeing at least one previously unlit spot become lit */
+        known = (obj->dknown && !Blind);
         litroom(TRUE, obj);
-        if (!Blind)
-            known = TRUE;
-        if (lightdamage(obj, TRUE, 5))
-            known = TRUE;
+        (void) lightdamage(obj, TRUE, 5);
         break;
     case WAN_SECRET_DOOR_DETECTION:
     case SPE_DETECT_UNSEEN:
-        if (!findit())
-            return;
-        if (!Blind)
-            known = TRUE;
+        /* findit() gives sufficient feedback to discover the wand even when
+           blinded or when it fails to find anything */
+        known = !!obj->dknown;
+        (void) findit();
         break;
     case WAN_CREATE_MONSTER:
-        known = create_critters(rn2(23) ? 1 : rn1(7, 2),
-                                (struct permonst *) 0, FALSE);
+        /* create_critters() returns True iff hero sees a new monster appear */
+        if (create_critters(rn2(23) ? 1 : rn1(7, 2),
+                            (struct permonst *) 0, FALSE))
+            known = !!obj->dknown;
         break;
     case WAN_WISHING:
-        known = TRUE;
         if (Luck + rn2(5) < 0) {
             pline("Unfortunately, nothing happens.");
-            break;
+            known = FALSE;
+        } else {
+            known = !!obj->dknown;
+            /* wand of wishing asks player what to wish for so always becomes
+               discovered (unless it hasn't been seen) */
+            makewish();
         }
-        makewish();
         break;
     case WAN_ENLIGHTENMENT:
-        known = TRUE;
+        known = !!obj->dknown;
+        /* do_enlightenmnt_effect() always describes enlightenment */
         do_enlightenment_effect();
         break;
+    default:
+        break;
     }
+
     if (known) {
         if (!objects[obj->otyp].oc_name_known)
             more_experienced(0, 10);
@@ -5224,8 +5233,10 @@ zap_over_floor(
 
     case ZT_POISON_GAS:
         /* poison gas with range 1: green dragon/iron golem breath (AD_DRST);
-           caller is placing a series of 1x1 clouds along the zap's path */
-        (void) create_gas_cloud(x, y, 1, 8);
+           caller is placing a series of 1x1 clouds along the zap's path;
+           <x,y> for wall locations might be included--reject those */
+        if (ZAP_POS(lev->typ))
+            (void) create_gas_cloud(x, y, 1, 8);
         break;
 
     case ZT_LIGHTNING:
@@ -5416,7 +5427,7 @@ mon_spell_hits_spot(
     }
 }
 
-/* fractured by pick-axe or wand of striking or by vault guard */
+/* fractured by pick-axe or wand of striking or by vault guard or shopkeeper */
 void
 fracture_rock(struct obj *obj) /* no texts here! */
 {
@@ -5925,8 +5936,8 @@ destroy_items(
         i = (elig_stacks < limit) ? elig_stacks : rn2(elig_stacks);
         /* do this afterwards to avoid not filling items_to_destroy[0] */
         elig_stacks++;
-        if (i >= limit) {
-            /* random index was too high */
+        if (i < 0 || i >= limit) {
+            /* random index was too high; mollify analyzer by including < 0 */
             continue;
         }
         items_to_destroy[i].oid = obj->o_id;

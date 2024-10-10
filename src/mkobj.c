@@ -1,4 +1,4 @@
-/* NetHack 3.7	mkobj.c	$NHDT-Date: 1718999849 2024/06/21 19:57:29 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.299 $ */
+/* NetHack 3.7	mkobj.c	$NHDT-Date: 1725138481 2024/08/31 21:08:01 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.304 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Derek S. Ray, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -952,8 +952,7 @@ mksobj_init(struct obj *otmp, boolean artif)
                need to perform any fix up and returns glob->owt as-is */
             otmp->owt = objects[otmp->otyp].oc_weight;
             otmp->known = otmp->dknown = 1;
-            otmp->corpsenm = PM_GRAY_OOZE
-                           + (otmp->otyp - GLOB_OF_GRAY_OOZE);
+            otmp->corpsenm = PM_GRAY_OOZE + (otmp->otyp - GLOB_OF_GRAY_OOZE);
             start_glob_timeout(otmp, 0L);
         } else {
             if (otmp->otyp != CORPSE && otmp->otyp != MEAT_RING
@@ -1100,7 +1099,8 @@ mksobj_init(struct obj *otmp, boolean artif)
         if (otmp->otyp == WAN_WISHING)
             otmp->spe = rnd(3);
         else
-            otmp->spe = rn1(5, (objects[otmp->otyp].oc_dir == NODIR) ? 11 : 4);
+            otmp->spe = rn1(5,
+                            (objects[otmp->otyp].oc_dir == NODIR) ? 11 : 4);
         blessorcurse(otmp, 17);
         otmp->recharged = 0; /* used to control recharging */
         break;
@@ -1160,7 +1160,7 @@ mksobj(int otyp, boolean init, boolean artif)
 
     otmp = newobj();
     *otmp = cg.zeroobj;
-    otmp->age = svm.moves;
+    otmp->age = max(svm.moves, 1L);
     otmp->o_id = next_ident();
     otmp->quan = 1L;
     otmp->oclass = let;
@@ -1341,7 +1341,7 @@ start_corpse_timeout(struct obj *body)
 
     action = ROT_CORPSE;               /* default action: rot away */
     rot_adjust = gi.in_mklev ? 25 : 10; /* give some variation */
-    age = svm.moves - body->age;
+    age = max(svm.moves, 1) - body->age;
     if (age > ROT_AGE)
         when = rot_adjust;
     else
@@ -2031,8 +2031,9 @@ mkcorpstat(
 
         otmp->corpsenm = monsndx(ptr);
         otmp->owt = weight(otmp);
-        if (otmp->otyp == CORPSE && (gz.zombify || special_corpse(old_corpsenm)
-                                     || special_corpse(otmp->corpsenm))) {
+        if (otmp->otyp == CORPSE
+            && (gz.zombify || special_corpse(old_corpsenm)
+                || special_corpse(otmp->corpsenm))) {
             obj_stop_timers(otmp);
             start_corpse_timeout(otmp);
         }
@@ -2381,8 +2382,8 @@ obj_timer_checks(
 
             /* mark the corpse as being on ice */
             otmp->on_ice = 1;
-            debugpline3("%s is now on ice at <%d,%d>.", The(xname(otmp)), x,
-                        y);
+            debugpline3("%s is now on ice at <%d,%d>.",
+                        The(xname(otmp)), x, y);
             /* Adjust the time remaining */
             tleft *= ROT_ICE_ADJUSTMENT;
             restart_timer = TRUE;
@@ -3654,16 +3655,19 @@ obj_absorb(struct obj **obj1, struct obj **obj2)
 /*
  * Causes the heavier object to absorb the lighter object in
  * most cases, but if one object is OBJ_FREE and the other is
- * on the floor, the floor object goes first.
+ * on the floor, the floor object goes first.  Note that when
+ * a globby monster dies, its corpse (new glob) will be created
+ * on the floor; when a glob is dropped, thrown, or kicked it
+ * will be free at the time obj_meld() gets called.
  *
- * wrapper for obj_absorb so that floor_effects works more
- * cleanly (since we don't know which we want to stay around)
+ * Wrapper for obj_absorb() so that floor_effects works more
+ * cleanly (since we don't know which we want to stay around).
  */
 struct obj *
 obj_meld(struct obj **obj1, struct obj **obj2)
 {
     struct obj *otmp1, *otmp2, *result = 0;
-    int ox, oy;
+    int ox, oy; /* coordinates for the glob that goes away */
 
     if (obj1 && obj2) {
         otmp1 = *obj1;
@@ -3693,8 +3697,14 @@ obj_meld(struct obj **obj1, struct obj **obj2)
             }
             /* callers really ought to take care of this; glob melding is
                a bookkeeping issue rather than a display one */
-            if (ox && cansee(ox, oy))
-                newsym(ox, oy);
+            if (ox) {
+                if (cansee(ox, oy))
+                    newsym(ox, oy);
+                /* and this; a hides-under monster might be hiding under
+                   the glob that went away; if there's nothing else there
+                   to hide under, force it out of hiding */
+                maybe_unhide_at(ox, oy);
+            }
         }
     } else {
         impossible("obj_meld: not called with two actual objects");

@@ -261,7 +261,7 @@ choke(struct obj *food)
             return;
         }
         You("stuff yourself and then vomit voluminously.");
-        morehungry(Hunger ? (u.uhunger - 60) : 1000); /* you just got *very* sick! */
+        morehungry(Hunger ? (u.uhunger - 60) : 1000); /* just got very sick! */
         vomit();
     } else {
         svk.killer.format = KILLED_BY_AN;
@@ -1177,13 +1177,14 @@ cpostfx(int pm)
         tmp += 20;
         if (gy.youmonst.data->mlet != S_MIMIC && !Unchanging) {
             char buf[BUFSZ];
+            const char *tempshape = !Hallucination ? "a pile of gold"
+                                                   : "an orange";
 
             if (!u.uconduct.polyselfs++) /* you're changing form */
                 livelog_printf(LL_CONDUCT,
                             "changed form for the first time by mimicking %s",
-                               Hallucination ? "an orange" : "a pile of gold");
-            You_cant("resist the temptation to mimic %s.",
-                     Hallucination ? "an orange" : "a pile of gold");
+                               tempshape);
+            You_cant("resist the temptation to mimic %s.", tempshape);
             /* A pile of gold can't ride. */
             if (u.usteed)
                 dismount_steed(DISMOUNT_FELL);
@@ -1665,7 +1666,8 @@ start_tin(struct obj *otmp)
            access); 1 turn delay case is non-deterministic:  getting
            interrupted and retrying might yield another 1 turn delay
            or might open immediately on 2nd (or 3rd, 4th, ...) try */
-        tmp = (uwep && uwep->blessed && uwep->otyp == TIN_OPENER) ? 0 : rn2(2);
+        tmp = (uwep && uwep->blessed && uwep->otyp == TIN_OPENER) ? 0
+                                                                  : rn2(2);
         if (!tmp)
             mesg = "The tin opens like magic!";
         else
@@ -2028,7 +2030,10 @@ fprefx(struct obj *otmp)
     switch (otmp->otyp) {
     case EGG:
         if (otmp->corpsenm == PM_PYROLISK) {
-            useup(otmp);
+            if (carried(otmp))
+                useup(otmp);
+            else
+                useupf(otmp, 1L);
             explode(u.ux, u.uy, -11, d(3, 6), 0, EXPL_FIERY);
             return FALSE;
         } else if (stale_egg(otmp)) {
@@ -2459,7 +2464,7 @@ fpostfx(struct obj *otmp)
             u.mh += otmp->cursed ? -rnd(20) : rnd(20), disp.botl = TRUE;
             if (u.mh > u.mhmax) {
                 if (!rn2(17))
-                    u.mhmax++;
+                    setuhpmax(u.mhmax + 1, FALSE);
                 u.mh = u.mhmax;
             } else if (u.mh <= 0) {
                 rehumanize();
@@ -2468,7 +2473,7 @@ fpostfx(struct obj *otmp)
             u.uhp += otmp->cursed ? -rnd(20) : rnd(20), disp.botl = TRUE;
             if (u.uhp > u.uhpmax) {
                 if (!rn2(17))
-                    setuhpmax(u.uhpmax + 1);
+                    setuhpmax(u.uhpmax + 1, FALSE);
                 u.uhp = u.uhpmax;
             } else if (u.uhp <= 0) {
                 svk.killer.format = KILLED_BY_AN;
@@ -2488,7 +2493,8 @@ fpostfx(struct obj *otmp)
                 if (!Stoned) {
                     Sprintf(svk.killer.name, "%s egg",
                             mons[otmp->corpsenm].pmnames[NEUTRAL]);
-                    make_stoned(5L, (char *) 0, KILLED_BY_AN, svk.killer.name);
+                    make_stoned(5L, (char *) 0, KILLED_BY_AN,
+                                svk.killer.name);
                 }
             }
             /* note: no "tastes like chicken" message for eggs */
@@ -2694,15 +2700,15 @@ doeat_nonfood(struct obj *otmp)
         || material == DRAGON_HIDE || material == WAX) {
         if (!u.uconduct.unvegan++ && !ll_conduct) {
             livelog_printf(LL_CONDUCT,
-                "consumed animal products for the first time, by eating %s",
-                an(food_xname(otmp, FALSE)));
+                  "consumed animal products for the first time, by eating %s",
+                           an(food_xname(otmp, FALSE)));
             ll_conduct++;
         }
         if (material != WAX) {
             if (!u.uconduct.unvegetarian && !ll_conduct)
                 livelog_printf(LL_CONDUCT,
-                    "tasted meat by-products for the first time, by eating %s",
-                    an(food_xname(otmp, FALSE)));
+                   "tasted meat by-products for the first time, by eating %s",
+                               an(food_xname(otmp, FALSE)));
             violated_vegetarian();
         }
     }
@@ -2842,8 +2848,8 @@ doeat(void)
 
 
     if (otmp == svc.context.victual.piece) {
-        boolean one_bite_left
-            = (svc.context.victual.usedtime + 1 >= svc.context.victual.reqtime);
+        boolean one_bite_left = (svc.context.victual.usedtime + 1
+                                 >= svc.context.victual.reqtime);
 
         /* If they weren't able to choke, they don't suddenly become able to
          * choke just because they were interrupted.  On the other hand, if
@@ -3562,12 +3568,12 @@ floorfood(
                 pline("%s but you %s eat them.", qbuf,
                       nodig ? "cannot" : "are too full to");
             } else {
-                Strcat(qbuf, ((!svc.context.digging.chew
-                               || svc.context.digging.pos.x != u.ux
-                               || svc.context.digging.pos.y != u.uy
-                               || !on_level(&svc.context.digging.level, &u.uz))
+                Strcat(qbuf, (!svc.context.digging.chew
+                              || !u_at(svc.context.digging.pos.x,
+                                       svc.context.digging.pos.y)
+                              || !on_level(&svc.context.digging.level, &u.uz))
                               ? "; eat them?"
-                              : "; resume eating them?"));
+                              : "; resume eating them?");
                 c = yn_function(qbuf, ynqchars, 'n', TRUE);
             }
             if (c == 'y')

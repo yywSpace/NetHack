@@ -1,4 +1,4 @@
-/* NetHack 3.7	pray.c	$NHDT-Date: 1712233483 2024/04/04 12:24:43 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.217 $ */
+/* NetHack 3.7	pray.c	$NHDT-Date: 1727250729 2024/09/25 07:52:09 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.220 $ */
 /* Copyright (c) Benson I. Margulies, Mike Stephenson, Steve Linhart, 1989. */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -368,7 +368,7 @@ fix_curse_trouble(struct obj *otmp, const char *what)
 staticfn void
 fix_worst_trouble(int trouble)
 {
-    int i;
+    int i, maxhp;
     struct obj *otmp = 0;
     const char *what = (const char *) 0;
     static NEARDATA const char leftglow[] = "Your left ring softly glows",
@@ -419,18 +419,17 @@ fix_worst_trouble(int trouble)
            boosted to be more than that */
         You_feel("much better.");
         if (Upolyd) {
-            u.mhmax += rnd(5);
-            if (u.mhmax <= 5)
-                u.mhmax = 5 + 1;
+            maxhp = u.mhmax + rnd(5);
+            setuhpmax(max(maxhp, 5 + 1), FALSE); /* acts as setmhmax() */
             u.mh = u.mhmax;
         }
-        if (u.uhpmax < u.ulevel * 5 + 11)
-            u.uhpmax += rnd(5);
-        if (u.uhpmax <= 5)
-            u.uhpmax = 5 + 1;
-        if (u.uhpmax > u.uhppeak)
-            u.uhppeak = u.uhpmax;
-        u.uhp = u.uhpmax;
+        maxhp = u.uhpmax;
+        if (maxhp < u.ulevel * 5 + 11)
+            maxhp += rnd(5);
+        /* True: update u.uhpmax even if currently poly'd */
+        setuhpmax(max(maxhp, 5 + 1), TRUE);
+        u.uhp = u.uhpmax; /* setuhpmax() will do this when u.uhp is higher
+                           * than u.uhpmax; prayer also does this if lower */
         disp.botl = TRUE;
         break;
     case TROUBLE_COLLAPSING:
@@ -443,7 +442,8 @@ fix_worst_trouble(int trouble)
             if ((otmp = stuck_ring(uleft, RIN_SUSTAIN_ABILITY)) != 0) {
                 if (otmp == uleft)
                     what = leftglow;
-            } else if ((otmp = stuck_ring(uright, RIN_SUSTAIN_ABILITY)) != 0) {
+            } else if ((otmp = stuck_ring(uright, RIN_SUSTAIN_ABILITY))
+                       != 0) {
                 if (otmp == uright)
                     what = rightglow;
             }
@@ -848,7 +848,8 @@ gcrownu(void)
     case A_CHAOTIC:
         u.uevent.uhand_of_elbereth = 3;
         in_hand = u_wield_art(ART_STORMBRINGER);
-        already_exists = exist_artifact(RUNESWORD, artiname(ART_STORMBRINGER));
+        already_exists = exist_artifact(RUNESWORD,
+                                        artiname(ART_STORMBRINGER));
         what = (((already_exists && !in_hand) || class_gift != STRANGE_OBJECT)
                 ? "take lives"
                 : "steal souls");
@@ -1859,8 +1860,8 @@ dosacrifice(void)
 
         /* KMH, conduct */
         if (!u.uconduct.gnostic++)
-            livelog_printf(LL_CONDUCT,
-                           "rejected atheism by offering %s on an altar of %s",
+            livelog_printf(LL_CONDUCT, "rejected atheism"
+                                       " by offering %s on an altar of %s",
                            corpse_xname(otmp, (const char *) 0, CXN_ARTICLE),
                            a_gname());
 
@@ -2066,9 +2067,9 @@ can_pray(boolean praying) /* false means no messages should be given */
 
     if (gp.p_aligntyp == A_NONE) /* praying to Moloch */
         gp.p_type = -2;
-    else if ((gp.p_trouble > 0) ? (u.ublesscnt > 200) /* big trouble */
-             : (gp.p_trouble < 0) ? (u.ublesscnt > 100) /* minor difficulties */
-               : (u.ublesscnt > 0))                  /* not in trouble */
+    else if ((gp.p_trouble > 0) ? (u.ublesscnt > 200)   /* big trouble */
+             : (gp.p_trouble < 0) ? (u.ublesscnt > 100) /* minor difficulty */
+               : (u.ublesscnt > 0))                     /* not in trouble */
         gp.p_type = 0;                     /* too soon... */
     else if ((int) Luck < 0 || u.ugangr || alignment < 0)
         gp.p_type = 1; /* too naughty... */
@@ -2119,7 +2120,8 @@ dopray(void)
      * than just "y" (will also require "no" to decline).
      */
     if (ParanoidPray) {
-        ok = paranoid_query(ParanoidConfirm, "Are you sure you want to pray?");
+        ok = paranoid_query(ParanoidConfirm,
+                            "Are you sure you want to pray?");
 
         /* clear command recall buffer; otherwise ^A to repeat p(ray) would
            do so without confirmation (if 'ok') or do nothing (if '!ok') */

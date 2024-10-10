@@ -1,4 +1,4 @@
-/* NetHack 3.7	extern.h	$NHDT-Date: 1720128155 2024/07/04 21:22:35 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1430 $ */
+/* NetHack 3.7	extern.h	$NHDT-Date: 1723580890 2024/08/13 20:28:10 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1435 $ */
 /* Copyright (c) Steve Creps, 1988.                               */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -9,7 +9,7 @@
  * The placements of the NONNULLARG* and NONNULLPTRS macros were done
  * using the following rules:
  * These were the rules that were followed when determining which function
- * parameters should be nonnul, and which are nullable:
+ * parameters should be nonnull, and which are nullable:
  *
  *   1. If the first use of, or reference to, the pointer parameter in the
  *      function is a dereference, then the parameter will be considered
@@ -202,7 +202,8 @@ extern void vary_init_attr(void);
 extern void adjabil(int, int);
 extern int newhp(void);
 extern int minuhpmax(int);
-extern void setuhpmax(int);
+extern void setuhpmax(int, boolean);
+extern int adjuhploss(int, int);
 extern schar acurr(int);
 extern schar acurrstr(void);
 extern boolean extremeattr(int);
@@ -1124,6 +1125,7 @@ extern void purge_all_custom_entries(void);
 extern void dump_glyphids(void);
 extern void clear_all_glyphmap_colors(void);
 extern void reset_customcolors(void);
+extern int glyph_to_cmap(int);
 
 /* ### hack.c ### */
 
@@ -1151,7 +1153,7 @@ extern void impact_disturbs_zombies(struct obj *, boolean) NONNULLARG1;
 extern void disturb_buried_zombies(coordxy, coordxy);
 extern boolean u_maybe_impaired(void);
 extern const char *u_locomotion(const char *) NONNULLARG1;
-extern void handle_tip(int);
+extern boolean handle_tip(int);
 extern void domove(void);
 extern void runmode_delay_output(void);
 extern void overexert_hp(void);
@@ -1757,7 +1759,7 @@ extern void kill_genocided_monsters(void);
 extern void golemeffects(struct monst *, int, int);
 extern boolean angry_guards(boolean);
 extern void pacify_guards(void);
-extern void decide_to_shapeshift(struct monst *, int) NONNULLARG1;
+extern void decide_to_shapeshift(struct monst *) NONNULLARG1;
 extern boolean vamp_stone(struct monst *) NONNULLARG1;
 extern void check_gear_next_turn(struct monst *) NONNULLARG1;
 extern void copy_mextra(struct monst *, struct monst *);
@@ -2574,6 +2576,9 @@ extern boolean in_out_region(coordxy, coordxy);
 extern boolean m_in_out_region(struct monst *, coordxy, coordxy) NONNULLARG1;
 extern void update_player_regions(void);
 extern void update_monster_region(struct monst *) NONNULLARG1;
+extern int reg_damg(NhRegion *) NONNULLARG1;
+extern boolean any_visible_region(void);
+extern void visible_region_summary(winid);
 extern NhRegion *visible_region_at(coordxy, coordxy);
 extern void show_region(NhRegion *, coordxy, coordxy) NONNULLARG1;
 extern void save_regions(NHFILE *) NONNULLARG1;

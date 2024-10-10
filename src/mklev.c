@@ -1,4 +1,4 @@
-/* NetHack 3.7	mklev.c	$NHDT-Date: 1704830831 2024/01/09 20:07:11 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.175 $ */
+/* NetHack 3.7	mklev.c	$NHDT-Date: 1728168518 2024/10/05 22:48:38 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.191 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Alex Smith, 2017. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -64,7 +64,7 @@ mkroom_cmp(const genericptr vx, const genericptr vy)
 }
 
 /* Return TRUE if a door placed at (x, y) which otherwise passes okdoor()
- * checks would be connecting into an area that was declared as joined = false.
+ * checks would be connecting into an area that was declared as joined=false.
  * Checking for this in finddpos() enables us to have rooms with sub-areas
  * (such as shops) that will never randomly generate unwanted doors in order
  * to connect them up to other areas.
@@ -461,11 +461,12 @@ alloc_doors(void)
 {
     if (!svd.doors || gd.doorindex >= svd.doors_alloc) {
         int c = svd.doors_alloc + DOORINC;
-        coord *doortmp = (coord *) alloc(c * sizeof(coord));
+        coord *doortmp = (coord *) alloc(c * sizeof (coord));
 
-        (void) memset((genericptr_t) doortmp, 0, c * sizeof(coord));
+        (void) memset((genericptr_t) doortmp, 0, c * sizeof (coord));
         if (svd.doors) {
-            (void) memcpy(doortmp, svd.doors, svd.doors_alloc * sizeof(coord));
+            (void) memcpy(doortmp, svd.doors,
+                          svd.doors_alloc * sizeof (coord));
             free(svd.doors);
         }
         svd.doors = doortmp;
@@ -610,11 +611,13 @@ place_niche(
 
     if (rn2(2)) {
         *dy = 1;
-        if (!finddpos(&dd, aroom->lx, aroom->hy + 1, aroom->hx, aroom->hy + 1))
+        if (!finddpos(&dd, aroom->lx, aroom->hy + 1,
+                      aroom->hx, aroom->hy + 1))
             return FALSE;
     } else {
         *dy = -1;
-        if (!finddpos(&dd, aroom->lx, aroom->ly - 1, aroom->hx, aroom->ly - 1))
+        if (!finddpos(&dd, aroom->lx, aroom->ly - 1,
+                      aroom->hx, aroom->ly - 1))
             return FALSE;
     }
     *xx = dd.x;
@@ -1102,14 +1105,17 @@ makelevel(void)
     branch *branchp;
     stairway *prevstairs;
     int room_threshold;
-    s_level *slev = Is_special(&u.uz);
+    s_level *slev;
     int i;
 
-    if (wiz1_level.dlevel == 0)
+    if (wiz1_level.dlevel == 0) {
+        impossible("makelevel() called when dungeon not yet initialized.");
         init_dungeons();
+    }
     oinit(); /* assign level dependent obj probabilities */
     clear_level_structures();
 
+    slev = Is_special(&u.uz);
     /* check for special levels */
     if (slev && !Is_rogue_level(&u.uz)) {
         makemaz(slev->proto);
@@ -1382,8 +1388,8 @@ level_finalize_topology(void)
     mineralize(-1, -1, -1, -1, FALSE);
     gi.in_mklev = FALSE;
     /* avoid coordinates in future lua-loads for this level being thrown off
-     * because xstart and ystart aren't saved with the level and will be 0 after
-     * leaving and returning */
+     * because xstart and ystart aren't saved with the level and will be 0
+     * after leaving and returning */
     gx.xstart = gy.ystart = 0;
     /* has_morgue gets cleared once morgue is entered; graveyard stays
        set (graveyard might already be set even when has_morgue is clear
@@ -2412,7 +2418,7 @@ mkinvpos(coordxy x, coordxy y, int dist)
     }
 
     if (!does_block(x, y, lev))
-        unblock_point(x, y); /* make sure vision knows this location is open */
+        unblock_point(x, y); /* make sure vision knows location is open */
 
     /* display new value of position; could have a monster/object on it */
     newsym(x, y);

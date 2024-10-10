@@ -408,7 +408,7 @@ getmattk(
 
     /* liches have a touch attack for cold damage and also a spell attack;
        they won't use the spell for monster vs monster so become impotent
-       aganst cold resistant foes; change the touch damage from cold to
+       against cold resistant foes; change the touch damage from cold to
        physical if target will resist */
     } else if (indx == 0 && attk->aatyp == AT_TUCH && attk->adtyp == AD_COLD
                && (udefend ? Cold_resistance : resists_cold(mdef))
@@ -657,10 +657,11 @@ mattacku(struct monst *mtmp)
         if (!canspotmon(mtmp))
             map_invisible(mtmp->mx, mtmp->my);
         if (!youseeit)
-            pline("%s %s!", Something, (likes_gold(mtmp->data)
-                                      && gy.youmonst.mappearance == GOLD_PIECE)
-                                           ? "tries to pick you up"
-                                           : "disturbs you");
+            pline("%s %s!", Something,
+                  (likes_gold(mtmp->data)
+                   && gy.youmonst.mappearance == GOLD_PIECE)
+                  ? "tries to pick you up"
+                  : "disturbs you");
         else /* see note about m_monnam() above */
             pline("Wait, %s!  That %s is really %s named %s!", m_monnam(mtmp),
                   mimic_obj_name(&gy.youmonst),
@@ -1089,7 +1090,8 @@ magic_negation(struct monst *mon)
            protection is too easy); it confers minimum mc 1 instead of 0 */
         if ((is_you && ((HProtection && u.ublessed > 0) || u.uspellprot))
             /* aligned priests and angels have innate intrinsic Protection */
-            || (mon->data == &mons[PM_ALIGNED_CLERIC] || is_minion(mon->data)))
+            || (mon->data == &mons[PM_ALIGNED_CLERIC]
+                || is_minion(mon->data)))
             mc = 1;
     }
     return mc;
@@ -1209,7 +1211,7 @@ hitmu(struct monst *mtmp, struct attack *mattk)
             else if (*hpmax_p > lowerlimit)
                 *hpmax_p = lowerlimit;
             /* else unlikely...
-             * already at or below minimum threshold; do nothing */
+             * already at or below minimum threshold, do nothing to hpmax */
             disp.botl = TRUE;
         }
 
@@ -1844,16 +1846,27 @@ gazemu(struct monst *mtmp, struct attack *mattk)
 void
 mdamageu(struct monst *mtmp, int n)
 {
+    if (n < 0) {
+        impossible("mdamageu for negative damage? (%d)", n);
+        n = 0;
+    }
+
     disp.botl = TRUE;
     if (Upolyd) {
         u.mh -= n;
         showdamage(n);
+        /* caller might have reduced mhmax before calling mdamageu() */
+        if (u.mh > u.mhmax)
+            u.mh = u.mhmax;
         if (u.mh < 1)
             rehumanize();
     } else {
         n = saving_grace(n);
         u.uhp -= n;
         showdamage(n);
+        /* caller might have reduced uhpmax before calling mdamageu() */
+        if (u.uhp > u.uhpmax)
+            u.uhp = u.uhpmax;
         if (u.uhp < 1)
             done_in_by(mtmp, DIED);
     }
@@ -1866,7 +1879,7 @@ mdamageu(struct monst *mtmp, int n)
 int
 could_seduce(
     struct monst *magr, struct monst *mdef,
-    struct attack *mattk) /* non-Null: current atk; Null: general capability */
+    struct attack *mattk) /* non-Null: current atk; Null: genrl capability */
 {
     struct permonst *pagr;
     boolean agrinvis, defperc;
@@ -1994,7 +2007,7 @@ doseduce(struct monst *mon)
             /* confirmation prompt when charisma is high bypassed if deaf */
             if (!Deaf && rn2(20) < ACURR(A_CHA)) {
                 (void) safe_qbuf(qbuf, "\"That ",
-                                 " looks pretty.  Would you wear it for me?\"",
+                                " looks pretty.  Would you wear it for me?\"",
                                  ring, xname, simpleonames, "ring");
                 makeknown(RIN_ADORNMENT);
                 SetVoice(mon, 0, 80, 0);
@@ -2250,7 +2263,7 @@ mayberem(struct monst *mon,
     if (Deaf) {
         pline("%s takes off your %s.", seducer, str);
     } else if (rn2(20) < ACURR(A_CHA)) {
-        SetVoice(mon, 0, 80, 0); /* y_n a.k.a. yn_function is set up for this */
+        SetVoice(mon, 0, 80, 0); /* y_n aka yn_function is set up for this */
         Sprintf(qbuf, "\"Shall I remove your %s, %s?\"", str,
                 (!rn2(2) ? "lover" : !rn2(2) ? "dear" : "sweetheart"));
         if (y_n(qbuf) == 'n')
@@ -2420,10 +2433,10 @@ passiveum(
                 break;
             }
             pline("%s is suddenly very cold!", Monnam(mtmp));
-            u.mh += tmp / 2;
+            u.mh += (tmp + rn2(2)) / 2;
             if (u.mhmax < u.mh)
                 u.mhmax = u.mh;
-            if (u.mhmax > ((gy.youmonst.data->mlevel + 1) * 8))
+            if (u.mhmax > (((int) gy.youmonst.data->mlevel + 1) * 8))
                 (void) split_mon(&gy.youmonst, mtmp);
             break;
         case AD_STUN: /* Yellow mold */

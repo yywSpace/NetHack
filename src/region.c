@@ -1,4 +1,4 @@
-/* NetHack 3.7	region.c	$NHDT-Date: 1707462965 2024/02/09 07:16:05 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.89 $ */
+/* NetHack 3.7	region.c	$NHDT-Date: 1727251269 2024/09/25 08:01:09 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.104 $ */
 /* Copyright (c) 1996 by Jean-Christophe Collet  */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -39,6 +39,7 @@ NhRegion *create_force_field(coordxy,coordxy,int,long);
 
 staticfn void reset_region_mids(NhRegion *);
 staticfn boolean is_hero_inside_gas_cloud(void);
+staticfn void make_gas_cloud(NhRegion *, int, boolean) NONNULLARG1;
 
 static const callback_proc callbacks[] = {
 #define INSIDE_GAS_CLOUD 0
@@ -447,12 +448,20 @@ run_regions(void)
         }
     }
 
-    if (gg.gas_cloud_diss_within)
+    if (gg.gas_cloud_diss_within) {
         pline_The("gas cloud around you dissipates.");
-    if (gg.gas_cloud_diss_seen)
-        You_see("%s dissipate.",
-                gg.gas_cloud_diss_seen == 1
-                ? "a gas cloud" : "some gas clouds");
+        /* normally won't see additional dissipation when within */
+        /* FIXME? this assumes that additional dissipation is close by */
+        if (u.xray_range <= 1)
+            gg.gas_cloud_diss_seen = 0;
+        gg.gas_cloud_diss_within = FALSE;
+    }
+    if (gg.gas_cloud_diss_seen) {
+        You_see("%s gas cloud%s dissipate.",
+                (gg.gas_cloud_diss_seen == 1) ? "a" : "some",
+                plur(gg.gas_cloud_diss_seen));
+        gg.gas_cloud_diss_seen = 0;
+    }
 }
 
 /*
@@ -628,6 +637,70 @@ remove_mon_from_regions(struct monst *mon)
 
 #endif /*0*/
 
+/* per-turn damage inflicted by visible region; hides details from caller */
+int
+reg_damg(NhRegion *reg)
+{
+    int damg = (!reg->visible || reg->ttl == -2L) ? 0 : reg->arg.a_int;
+
+    return damg;
+}
+
+/* check whether current level has any visible regions */
+boolean
+any_visible_region(void)
+{
+    int i;
+
+    for (i = 0; i < svn.n_regions; i++) {
+        if (!gr.regions[i]->visible || gr.regions[i]->ttl == -2L)
+            continue;
+        return TRUE;
+    }
+    return FALSE;
+}
+
+/* for the wizard mode #timeout command */
+void
+visible_region_summary(winid win)
+{
+    NhRegion *reg;
+    char buf[BUFSZ], typbuf[QBUFSZ];
+    int i, damg, hdr_done = 0;
+    const char *fldsep = iflags.menu_tab_sep ? "\t" : "  ";
+
+    for (i = 0; i < svn.n_regions; i++) {
+        reg = gr.regions[i];
+        if (!reg->visible || reg->ttl == -2L)
+            continue;
+
+        if (!hdr_done++) {
+            putstr(win, 0, "");
+            putstr(win, 0, "Visible regions");
+        }
+        /*
+         * TODO? sort the regions by time-to-live or by bounding box.
+         */
+
+        /* we display relative time (turns left) rather than absolute
+           (the turn when region will go away);
+           since time-to-live has already been decremented, regions
+           which are due to timeout on the next turn have ttl==0;
+           adding 1 is intended to make the display be less confusing */
+        Sprintf(buf, "%5ld", reg->ttl + 1L);
+        damg = reg->arg.a_int;
+        if (damg)
+            Sprintf(typbuf, "poison gas (%d)", damg);
+        else
+            Strcpy(typbuf, "vapor");
+        Sprintf(eos(buf), "%s%-16s", fldsep, typbuf);
+        Sprintf(eos(buf), "%s@[%d,%d..%d,%d]", fldsep,
+                reg->bounding_box.lx, reg->bounding_box.ly,
+                reg->bounding_box.hx, reg->bounding_box.hy);
+        putstr(win, 0, buf);
+    }
+}
+
 /*
  * Check if a spot is under a visible region (eg: gas cloud).
  * Returns NULL if not, otherwise returns region.
@@ -666,18 +739,20 @@ save_regions(NHFILE *nhfp)
         goto skip_lots;
     if (nhfp->structlevel) {
         /* timestamp */
-        bwrite(nhfp->fd, (genericptr_t) &svm.moves, sizeof (svm.moves));
-        bwrite(nhfp->fd, (genericptr_t) &svn.n_regions, sizeof (svn.n_regions));
+        bwrite(nhfp->fd, (genericptr_t) &svm.moves, sizeof svm.moves);
+        bwrite(nhfp->fd, (genericptr_t) &svn.n_regions, sizeof svn.n_regions);
     }
     for (i = 0; i < svn.n_regions; i++) {
         r = gr.regions[i];
         if (nhfp->structlevel) {
-            bwrite(nhfp->fd, (genericptr_t) &r->bounding_box, sizeof (NhRect));
+            bwrite(nhfp->fd, (genericptr_t) &r->bounding_box,
+                   sizeof (NhRect));
             bwrite(nhfp->fd, (genericptr_t) &r->nrects, sizeof (short));
         }
         for (j = 0; j < r->nrects; j++) {
             if (nhfp->structlevel)
-                bwrite(nhfp->fd, (genericptr_t) &r->rects[j], sizeof (NhRect));
+                bwrite(nhfp->fd, (genericptr_t) &r->rects[j],
+                       sizeof (NhRect));
         }
         if (nhfp->structlevel)
             bwrite(nhfp->fd, (genericptr_t) &r->attach_2_u, sizeof (boolean));
@@ -747,11 +822,11 @@ rest_regions(NHFILE *nhfp)
         tmstamp = (svm.moves - tmstamp);
 
     if (nhfp->structlevel)
-        mread(nhfp->fd, (genericptr_t) &svn.n_regions, sizeof (svn.n_regions));
+        mread(nhfp->fd, (genericptr_t) &svn.n_regions, sizeof svn.n_regions);
 
     gm.max_regions = svn.n_regions;
     if (svn.n_regions > 0)
-        gr.regions = (NhRegion **) alloc(sizeof (NhRegion *) * svn.n_regions);
+        gr.regions = (NhRegion **) alloc(svn.n_regions * sizeof (NhRegion *));
     for (i = 0; i < svn.n_regions; i++) {
         r = gr.regions[i] = (NhRegion *) alloc(sizeof (NhRegion));
         if (nhfp->structlevel) {
@@ -858,7 +933,7 @@ region_stats(
 
     /* other stats formats take one parameter; this takes two */
     Sprintf(hdrbuf, hdrfmt, (long) sizeof (NhRegion), (long) sizeof (NhRect));
-    *count = (long) svn.n_regions; /* might be 0 even though max_regions isn't */
+    *count = (long) svn.n_regions; /* might be 0 even tho max_regions isn't */
     *size = (long) gm.max_regions * (long) sizeof (NhRegion);
     for (i = 0; i < svn.n_regions; ++i) {
         rg = gr.regions[i];
@@ -1021,11 +1096,13 @@ expire_gas_cloud(genericptr_t p1, genericptr_t p2 UNUSED)
                     if (pass == 1) {
                         if (!does_block(x, y, &levl[x][y]))
                             unblock_point(x, y);
-                        if (u_at(x, y))
-                            gg.gas_cloud_diss_within = TRUE;
                     } else { /* pass==2 */
-                        if (cansee(x, y))
-                            gg.gas_cloud_diss_seen++;
+                        if (!u.uswallow) {
+                            if (u_at(x, y))
+                                gg.gas_cloud_diss_within = TRUE;
+                            else if (cansee(x, y))
+                                gg.gas_cloud_diss_seen++;
+                        }
                     }
                 }
             }
@@ -1125,13 +1202,44 @@ is_hero_inside_gas_cloud(void)
     return FALSE;
 }
 
+/* details of gas cloud creation which are common to create_gas_cloud()
+   and create_gas_cloud_selection() */
+staticfn void
+make_gas_cloud(
+    NhRegion *cloud,
+    int damage,
+    boolean inside_cloud)
+{
+    if (!gi.in_mklev && !svc.context.mon_moving)
+        set_heros_fault(cloud); /* assume player has created it */
+    cloud->inside_f = INSIDE_GAS_CLOUD;
+    cloud->expire_f = EXPIRE_GAS_CLOUD;
+    cloud->arg = cg.zeroany;
+    cloud->arg.a_int = damage;
+    cloud->visible = TRUE;
+    cloud->glyph = cmap_to_glyph(damage ? S_poisoncloud : S_cloud);
+    add_region(cloud);
+
+    if (!gi.in_mklev && !inside_cloud && is_hero_inside_gas_cloud()) {
+        You("are enveloped in a cloud of %s!",
+            /* FIXME: "steam" is wrong if this cloud is just the trail of
+               a fog cloud's movement; changing to "vapor" would handle
+               that but seems a step backward when it really is steam */
+            damage ? "noxious gas" : "steam");
+        iflags.last_msg = PLNMSG_ENVELOPED_IN_GAS;
+    }
+}
+
 /* Create a gas cloud which starts at (x,y) and grows outward from it via
  * breadth-first search.
  * cloudsize is the number of squares the cloud will attempt to fill.
  * damage is how much it deals to afflicted creatures. */
 #define MAX_CLOUD_SIZE 150
 NhRegion *
-create_gas_cloud(coordxy x, coordxy y, int cloudsize, int damage)
+create_gas_cloud(
+    coordxy x, coordxy y,
+    int cloudsize,
+    int damage)
 {
     NhRegion *cloud;
     int i, j;
@@ -1172,13 +1280,13 @@ create_gas_cloud(coordxy x, coordxy y, int cloudsize, int damage)
         for (i = 4; i > 0; --i) {
             coordxy swapidx = rn2(i);
             coord tmp = dirs[swapidx];
-            dirs[swapidx] = dirs[i-1];
-            dirs[i-1] = tmp;
+
+            dirs[swapidx] = dirs[i - 1];
+            dirs[i - 1] = tmp;
         }
         int nvalid = 0; /* # of valid adjacent spots */
         for (i = 0; i < 4; ++i) {
-            /* try all 4 directions */
-
+            /* try all 4 cardinal directions */
             int dx = dirs[i].x, dy = dirs[i].y;
             boolean isunpicked = TRUE;
 
@@ -1222,28 +1330,15 @@ create_gas_cloud(coordxy x, coordxy y, int cloudsize, int damage)
     /* If cloud was constrained in small space, give it more time to live. */
     cloud->ttl = (cloud->ttl * cloudsize) / newidx;
 
-    if (!gi.in_mklev && !svc.context.mon_moving)
-        set_heros_fault(cloud); /* assume player has created it */
-    cloud->inside_f = INSIDE_GAS_CLOUD;
-    cloud->expire_f = EXPIRE_GAS_CLOUD;
-    cloud->arg = cg.zeroany;
-    cloud->arg.a_int = damage;
-    cloud->visible = TRUE;
-    cloud->glyph = cmap_to_glyph(damage ? S_poisoncloud : S_cloud);
-    add_region(cloud);
-
-    if (!gi.in_mklev && !inside_cloud && is_hero_inside_gas_cloud()) {
-        You("are enveloped in a cloud of %s!",
-            damage ? "noxious gas" : "steam");
-        iflags.last_msg = PLNMSG_ENVELOPED_IN_GAS;
-    }
-
+    make_gas_cloud(cloud, damage, inside_cloud);
     return cloud;
 }
 
 /* create a single gas cloud from selection */
 NhRegion *
-create_gas_cloud_selection(struct selectionvar *sel, int damage)
+create_gas_cloud_selection(
+    struct selectionvar *sel,
+    int damage)
 {
     NhRegion *cloud;
     NhRect tmprect;
@@ -1262,19 +1357,7 @@ create_gas_cloud_selection(struct selectionvar *sel, int damage)
                 add_rect_to_reg(cloud, &tmprect);
             }
 
-    if (!gi.in_mklev && !svc.context.mon_moving)
-        set_heros_fault(cloud); /* assume player has created it */
-    cloud->inside_f = INSIDE_GAS_CLOUD;
-    cloud->expire_f = EXPIRE_GAS_CLOUD;
-    cloud->arg = cg.zeroany;
-    cloud->arg.a_int = damage;
-    cloud->visible = TRUE;
-    cloud->glyph = cmap_to_glyph(damage ? S_poisoncloud : S_cloud);
-    add_region(cloud);
-
-    if (!gi.in_mklev && !inside_cloud && is_hero_inside_gas_cloud())
-        You("are enveloped in a cloud of %s!",
-            damage ? "noxious gas" : "steam");
+    make_gas_cloud(cloud, damage, inside_cloud);
     return cloud;
 }
 
@@ -1327,7 +1410,14 @@ region_safety(void)
 
     if (n > 1 || (n == 1 && !r)) {
         /* multiple overlapping cloud regions or non-expiring one */
-        safe_teleds(TELEDS_NO_FLAGS);
+        (void) safe_teleds(TELEDS_NO_FLAGS);
+        /* maybe there's no safe place available; must get hero out of danger
+           or prayer's "fix all troubles" result will get stuck in a loop */
+        if (region_danger()) {
+            set_itimeout(&HMagical_breathing, (long) (d(4, 4) + 4));
+            /* not already Breathless or wouldn't be in region danger */
+            You_feel("able to breathe.");
+        }
     } else if (r) {
         remove_region(r);
         pline_The("gas cloud enveloping you dissipates.");

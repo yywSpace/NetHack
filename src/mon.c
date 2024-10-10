@@ -1,4 +1,4 @@
-/* NetHack 3.7	mon.c	$NHDT-Date: 1718303201 2024/06/13 18:26:41 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.576 $ */
+/* NetHack 3.7	mon.c	$NHDT-Date: 1722365546 2024/07/30 18:52:26 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.584 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Derek S. Ray, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -712,7 +712,7 @@ make_corpse(struct monst *mtmp, unsigned int corpseflags)
     case PM_FIRE_ANT: case PM_GIANT_BEETLE: case PM_QUEEN_BEE:
 
     case PM_QUIVERING_BLOB: case PM_ACID_BLOB: case PM_GELATINOUS_CUBE:
-    case PM_CHICKATRICE: case PM_COCKATRICE: case PM_PYROLISK: 
+    case PM_CHICKATRICE: case PM_COCKATRICE: case PM_PYROLISK:
 
     case PM_JACKAL: case PM_FOX: case PM_COYOTE: case PM_WEREJACKAL:
     case PM_LITTLE_DOG: case PM_DINGO: case PM_DOG: case PM_LARGE_DOG:
@@ -780,7 +780,7 @@ make_corpse(struct monst *mtmp, unsigned int corpseflags)
 
     case PM_GNOME: case PM_GNOME_LEADER: case PM_GNOMISH_WIZARD:
     case PM_GNOME_RULER:
-    case PM_GIANT: case PM_STONE_GIANT: case PM_HILL_GIANT: 
+    case PM_GIANT: case PM_STONE_GIANT: case PM_HILL_GIANT:
     case PM_FIRE_GIANT: case PM_FROST_GIANT: case PM_ETTIN:
     case PM_STORM_GIANT: case PM_TITAN:
 
@@ -865,7 +865,7 @@ make_corpse(struct monst *mtmp, unsigned int corpseflags)
 #else
     default:
 #endif
-default_1:
+ default_1:
         if (svm.mvitals[mndx].mvflags & G_NOCORPSE) {
             return (struct obj *) 0;
         } else {
@@ -1038,7 +1038,8 @@ minliquid_core(struct monst *mtmp)
          * water damage to dead monsters' inventory, but survivors need to
          * be handled here.  Swimmers are able to protect their stuff...
          */
-        if ((waterwall || !is_clinger(mtmp->data)) && !cant_drown(mtmp->data)) {
+        if ((waterwall || !is_clinger(mtmp->data))
+            && !cant_drown(mtmp->data)) {
             /* like hero with teleport intrinsic or spell, teleport away
                if possible */
             if (can_teleport(mtmp->data) && !tele_restrict(mtmp)) {
@@ -1151,9 +1152,7 @@ m_calcdistress(struct monst *mtmp)
 
     /* possibly polymorph shapechangers and lycanthropes */
     if (ismnum(mtmp->cham))
-        decide_to_shapeshift(mtmp, (canspotmon(mtmp)
-                                    || engulfing_u(mtmp))
-                                    ? SHIFT_MSG : 0);
+        decide_to_shapeshift(mtmp);
     were_change(mtmp);
 
     /* gradually time out temporary problems */
@@ -1687,9 +1686,9 @@ mon_give_prop(struct monst *mtmp, int prop)
     const char *msg = NULL;
     unsigned short intrinsic = 0; /* MR_* constant */
 
-    /* Pets don't have all the fields that the hero does, so they can't get all
-       the same intrinsics. If it happens to choose strength gain or teleport
-       control or whatever, ignore it. */
+    /* Pets don't have all the fields that the hero does, so they can't get
+       all the same intrinsics.  If it happens to choose strength gain or
+       teleport control or whatever, ignore it. */
     switch (prop) {
     case FIRE_RES:
         msg = "%s shivers slightly.";
@@ -2226,7 +2225,8 @@ mfndpos(
                 /* Displacement also displaces the Elbereth/scare monster,
                  * as long as you are visible.
                  */
-                if (Displaced && monseeu && mon->mux == nx && mon->muy == ny) {
+                if (Displaced && monseeu
+                    && mon->mux == nx && mon->muy == ny) {
                     dispx = u.ux;
                     dispy = u.uy;
                 } else {
@@ -2277,7 +2277,8 @@ mfndpos(
                     }
                     /* Note: ALLOW_SANCT only prevents movement, not
                        attack, into a temple. */
-                    if (svl.level.flags.has_temple && *in_rooms(nx, ny, TEMPLE)
+                    if (svl.level.flags.has_temple
+                        && *in_rooms(nx, ny, TEMPLE)
                         && !*in_rooms(x, y, TEMPLE)
                         && in_your_sanctuary((struct monst *) 0, nx, ny)) {
                         if (!(flag & ALLOW_SANCT))
@@ -2311,8 +2312,8 @@ mfndpos(
                  */
                 if ((ttmp = t_at(nx, ny)) != 0) {
                     if (ttmp->ttyp >= TRAPNUM || ttmp->ttyp == 0) {
-                        impossible(
-                         "A monster looked at a very strange trap of type %d.",
+                        impossible("A monster looked at a very strange trap"
+                                   " of type %d.",
                                    ttmp->ttyp);
                             continue;
                     }
@@ -2808,8 +2809,6 @@ lifesaved_monster(struct monst *mtmp)
     }
 }
 
-DISABLE_WARNING_FORMAT_NONLITERAL
-
 /* when a shape-shifted vampire is killed, it reverts to base form instead
    of dying; moved into separate routine to unclutter mondead() */
 staticfn boolean
@@ -2820,7 +2819,7 @@ vamprises(struct monst *mtmp)
     if (ismnum(mndx) && mndx != monsndx(mtmp->data)
         && !(svm.mvitals[mndx].mvflags & G_GENOD)) {
         coord new_xy;
-        char buf[BUFSZ];
+        char action[BUFSZ];
         /* alternate message phrasing for some monster types */
         boolean spec_mon = (nonliving(mtmp->data)
                             || noncorporeal(mtmp->data)
@@ -2830,13 +2829,12 @@ vamprises(struct monst *mtmp)
                               || amorphous(mtmp->data));
         coordxy x = mtmp->mx, y = mtmp->my;
 
-        /* construct a format string before transformation;
-           will be capitalized when used, expects one %s arg */
-        Snprintf(buf, sizeof buf,
-                 "%s suddenly %s and rises as %%s!",
+        /* construct a 'before' argument to pass to pline(); this used
+           to construct a dynamic format string but that's overkill */
+        Snprintf(action, sizeof action, "%s suddenly %s and rises as",
                  x_monnam(mtmp, ARTICLE_THE,
                           spec_mon ? (char *) 0 : "seemingly dead",
-                          (SUPPRESS_INVISIBLE | SUPPRESS_IT), FALSE),
+                          (SUPPRESS_INVISIBLE | AUGMENT_IT), FALSE),
                  spec_death ? "reconstitutes" : "transforms");
         mtmp->mcanmove = 1;
         mtmp->mfrozen = 0;
@@ -2857,19 +2855,16 @@ vamprises(struct monst *mtmp)
                 rloc_to(mtmp, new_xy.x, new_xy.y);
         }
         (void) newcham(mtmp, &mons[mndx], NO_NC_FLAGS);
-        if (mtmp->data == &mons[mndx])
-            mtmp->cham = NON_PM;
-        else
-            mtmp->cham = mndx;
+        mtmp->cham = (mtmp->data == &mons[mndx]) ? NON_PM : mndx;
 
         if (canspotmon(mtmp)) {
             /* 3.6.0 used a_monnam(mtmp); that was weird if mtmp was
                named: "Dracula suddenly transforms and rises as Dracula";
                3.6.1 used mtmp->data->mname; that ignored hallucination */
-            pline_mon(mtmp, upstart(buf),
-                  x_monnam(mtmp, ARTICLE_A, (char *) 0,
+            pline_mon(mtmp, "%s %s!", upstart(action),
+                      x_monnam(mtmp, ARTICLE_A, (char *) 0,
                            (SUPPRESS_NAME | SUPPRESS_IT | SUPPRESS_INVISIBLE),
-                           FALSE));
+                               FALSE));
             gv.vamp_rise_msg = TRUE;
         }
         newsym(x, y);
@@ -2877,8 +2872,6 @@ vamprises(struct monst *mtmp)
     }
     return FALSE;
 }
-
-RESTORE_WARNING_FORMAT_NONLITERAL
 
 /* specific combination of x_monnam flags for livelogging; show what was
    actually killed even when unseen or hallucinated to be something else */
@@ -3094,7 +3087,8 @@ corpse_chance(
                     There("is an explosion in your %s!", body_part(STOMACH));
                     Sprintf(svk.killer.name, "%s explosion",
                             s_suffix(pmname(mdat, Mgender(mon))));
-                    losehp(Maybe_Half_Phys(tmp), svk.killer.name, KILLED_BY_AN);
+                    losehp(Maybe_Half_Phys(tmp), svk.killer.name,
+                           KILLED_BY_AN);
                 } else {
                     You_hear("an explosion.");
                     magr->mhp -= tmp;
@@ -3358,7 +3352,7 @@ killed(struct monst *mtmp)
 void
 xkilled(
     struct monst *mtmp,
-    int xkill_flags) /* 1: suppress message, 2: suppress corpse, 4: pacifist */
+    int xkill_flags) /* 1: suppress mesg, 2: suppress corpse, 4: pacifist */
 {
     int tmp, mndx;
     coordxy x = mtmp->mx, y = mtmp->my;
@@ -3942,7 +3936,8 @@ mnearto(
 
     if (move_other && othermon) {
         res = 2; /* moving another monster out of the way */
-        if (!mnearto(othermon, x, y, FALSE, rlocflags))  /* no 'move_other' this time */
+        /* 'move_other'==FALSE this time; fail rather than recurse */
+        if (!mnearto(othermon, x, y, FALSE, rlocflags))
             deal_with_overcrowding(othermon);
     }
 
@@ -4560,6 +4555,9 @@ hideunder(struct monst *mtmp)
                && (otmp = svl.level.objects[x][y]) != 0
                /* most things can be hidden under, but not all */
                && can_hide_under_obj(otmp)
+               /* pets won't hide under a cursed item or an item of any BUC
+                  state that shares a pile with one or more cursed items */
+               && (!mtmp->mtame || !cursed_object_at(x, y))
                /* aquatic creatures don't reach here; other swimmers
                   shouldn't hide beneath underwater objects */
                && !is_pool_or_lava(x, y)) {
@@ -4671,19 +4669,15 @@ pick_animal(void)
 }
 
 void
-decide_to_shapeshift(struct monst *mon, int shiftflags)
+decide_to_shapeshift(struct monst *mon)
 {
     struct permonst *ptr = 0;
     int mndx;
     unsigned was_female = mon->female;
-    boolean msg = FALSE, dochng = FALSE;
-
-    if ((shiftflags & SHIFT_MSG)
-        || ((shiftflags & SHIFT_SEENMSG) && sensemon(mon)))
-        msg = TRUE;
+    boolean dochng = FALSE;
 
     if (!is_vampshifter(mon)) {
-        /* regular shapeshifter */
+        /* regular shapeshifter; 'ptr' is Null */
         if (!rn2(6))
             dochng = TRUE;
     } else if (!(mon->mstrategy & STRAT_WAITFORU)) {
@@ -4729,11 +4723,14 @@ decide_to_shapeshift(struct monst *mon, int shiftflags)
         }
     }
     if (dochng) {
-        if (newcham(mon, ptr, msg ? NC_SHOW_MSG : 0) && is_vampshifter(mon)) {
-            /* for vampshift, override the 10% chance for sex change */
-            ptr = mon->data;
-            if (!is_male(ptr) && !is_female(ptr) && !is_neuter(ptr))
-                mon->female = was_female;
+        if (newcham(mon, ptr, NC_SHOW_MSG)) {
+            /* for vampshift, override the 10% chance for sex change
+               (by forcing original gender in case that occurred) */
+            if (is_vampshifter(mon)) {
+                ptr = mon->data;
+                if (!is_male(ptr) && !is_female(ptr) && !is_neuter(ptr))
+                    mon->female = was_female;
+            }
         }
     }
 }
@@ -5077,10 +5074,11 @@ newcham(
 {
     boolean polyspot = ((ncflags & NC_VIA_WAND_OR_SPELL) !=0),
             /* "The oldmon turns into a newmon!" */
-            msg = ((ncflags & NC_SHOW_MSG) != 0);
+            msg = ((ncflags & NC_SHOW_MSG) != 0),
+            seenorsensed = canspotmon(mtmp);
     int hpn, hpd, mndx, tryct;
     struct permonst *olddata = mtmp->data;
-    char *p, oldname[BUFSZ], l_oldname[BUFSZ], newname[BUFSZ];
+    char *p, oldname[BUFSZ], l_oldname[BUFSZ];
 
     /* Riders are immune to polymorph and green slime
        (but apparent Rider might actually be a doppelganger) */
@@ -5101,9 +5099,10 @@ newcham(
     }
 
     if (msg) {
-        /* like Monnam() but never mention saddle */
-        Strcpy(oldname, x_monnam(mtmp, ARTICLE_THE, (char *) 0,
-                                 SUPPRESS_SADDLE, FALSE));
+        Strcpy(oldname,
+               /* like YMonnam() but never mention saddle */
+               x_monnam(mtmp, mtmp->mtame ? ARTICLE_YOUR : ARTICLE_THE,
+                        (char *) 0, SUPPRESS_SADDLE, FALSE));
         oldname[0] = highc(oldname[0]);
     }
     /* we need this one whether msg is true or not */
@@ -5251,17 +5250,20 @@ newcham(
     newsym(mtmp->mx, mtmp->my);
 
     if (msg) {
-        Strcpy(newname, noname_monnam(mtmp, ARTICLE_A));
-        /* oldname was capitalized above; newname will be lower case */
-        if (!strcmpi(newname, "it")) { /* can't see or sense it now */
-            if (!!strcmpi(oldname, "it")) /* could see or sense it before */
-                pline("%s disappears!", oldname);
+        /* oldname is capitalized and might be an assigned name */
+        if (!canspotmon(mtmp)) { /* can't see or sense it now */
+            if (seenorsensed) /* could see or sense it before */
+                pline_mon(mtmp, "%s disappears!", oldname);
             (void) usmellmon(mdat);
-        } else { /* can see or sense it now */
-            if (!strcmpi(oldname, "it")) /* couldn't see or sense it before */
-                pline("%s appears!", upstart(newname));
-            else
-                pline("%s turns into %s!", oldname, newname);
+        } else if (!seenorsensed) { /* couldn't see/sense before, can now */
+            char *mnm = x_monnam(mtmp, mtmp->mtame ? ARTICLE_YOUR : ARTICLE_A,
+                                 (char *) 0, 0, FALSE);
+
+            pline_mon(mtmp, "%s appears!", upstart(mnm));
+        } else { /* saw/sensed it before, still see/sense it now */
+            pline_mon(mtmp, "%s turns into %s!", oldname,
+                      /* "a <monster type>" even if it has a name assigned */
+                      noname_monnam(mtmp, ARTICLE_A));
         }
     }
 

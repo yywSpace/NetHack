@@ -1,4 +1,4 @@
-/* NetHack 3.7	wizcmds.c	$NHDT-Date: 1716592982 2024/05/24 23:23:02 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.7 $ */
+/* NetHack 3.7	wizcmds.c	$NHDT-Date: 1723580901 2024/08/13 20:28:21 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.12 $ */
 /*-Copyright (c) Robert Patrick Rankin, 2024. */
 /* NetHack may be freely redistributed.  See license for details. */
 
@@ -444,16 +444,17 @@ wiz_flip_level(void)
 int
 wiz_level_change(void)
 {
-    char buf[BUFSZ] = DUMMY;
+    char buf[BUFSZ], dummy = '\0';
     int newlevel = 0;
     int ret;
 
+    buf[0] = '\0'; /* in case EDIT_GETLIN is enabled */
     getlin("To what experience level do you want to be set?", buf);
     (void) mungspaces(buf);
     if (buf[0] == '\033' || buf[0] == '\0')
         ret = 0;
     else
-        ret = sscanf(buf, "%d", &newlevel);
+        ret = sscanf(buf, "%d%c", &newlevel, &dummy);
 
     if (ret != 1) {
         pline1(Never_mind);
@@ -480,6 +481,7 @@ wiz_level_change(void)
         while (u.ulevel < newlevel)
             pluslvl(FALSE);
     }
+    /* blessed full healing or restore ability won't fix any lost levels */
     u.ulevelmax = u.ulevel;
     return ECMD_OK;
 }
@@ -1049,7 +1051,7 @@ wiz_intrinsic(void)
                 if (!Warn_of_mon) {
                     svc.context.warntype.speciesidx = PM_GRID_BUG;
                     svc.context.warntype.species
-                                       = &mons[svc.context.warntype.speciesidx];
+                                     = &mons[svc.context.warntype.speciesidx];
                 }
                 goto def_feedback;
             case GLIB:

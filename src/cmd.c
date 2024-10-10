@@ -215,18 +215,30 @@ set_occupation(int (*fn)(void), const char *txt, cmdcount_nht xtime)
 void
 cmdq_print(int q)
 {
-    struct _cmd_queue *cq = gc.command_queue[q];
     char buf[QBUFSZ];
+    struct _cmd_queue *cq = gc.command_queue[q];
 
     pline("CQ:%i", q);
     while (cq) {
         switch (cq->typ) {
-        case CMDQ_KEY: pline("(key:%s)", key2txt(cq->key, buf)); break;
-        case CMDQ_EXTCMD: pline("(extcmd:#%s)", cq->ec_entry->ef_txt); break;
-        case CMDQ_DIR: pline("(dir:%i,%i,%i)", cq->dirx, cq->diry, cq->dirz); break;
-        case CMDQ_USER_INPUT: pline1("(userinput)"); break;
-        case CMDQ_INT: pline("(int:%i)", cq->intval); break;
-        default: pline("(ERROR:%i)",cq->typ); break;
+        case CMDQ_KEY:
+            pline("(key:%s)", key2txt(cq->key, buf));
+            break;
+        case CMDQ_EXTCMD:
+            pline("(extcmd:#%s)", cq->ec_entry->ef_txt);
+            break;
+        case CMDQ_DIR:
+            pline("(dir:%i,%i,%i)", cq->dirx, cq->diry, cq->dirz);
+            break;
+        case CMDQ_USER_INPUT:
+            pline("(userinput)");
+            break;
+        case CMDQ_INT:
+            pline("(int:%i)", cq->intval);
+            break;
+        default:
+            pline("(ERROR:%i)",cq->typ);
+            break;
         }
         cq = cq->next;
     }
@@ -878,7 +890,8 @@ domonability(void)
     char c = '\0';
 
     if (might_hide && webmaker(uptr)) {
-        c = yn_function("Hide [h] or spin a web [s]?", hidespinchars, 'q', TRUE);
+        c = yn_function("Hide [h] or spin a web [s]?",
+                        hidespinchars, 'q', TRUE);
         if (c == 'q' || c == '\033')
             return ECMD_OK;
     }
@@ -902,8 +915,13 @@ domonability(void)
         if (IS_FOUNTAIN(levl[u.ux][u.uy].typ)) {
             if (split_mon(&gy.youmonst, (struct monst *) 0))
                 dryup(u.ux, u.uy, TRUE);
-        } else
+        } else if (is_pool(u.ux, u.uy)) {
+            /* is_pool: might be wearing water walking boots or amulet of
+               magical breathing */
+            (void) split_mon(&gy.youmonst, (struct monst *) 0);
+        } else {
             There("is no fountain here.");
+        }
     } else if (is_unicorn(uptr)) {
         use_unicorn_horn((struct obj **) 0);
         return ECMD_TIME;
@@ -2182,7 +2200,7 @@ handler_rebind_keys_add(boolean keyfirst)
             ec = &extcmdlist[i-1];
             cmdstr = ec->ef_txt;
         }
-bindit:
+ bindit:
         if (!key) {
             pline("Bind which key? ");
             key = pgetchar();
@@ -2198,7 +2216,8 @@ bindit:
                 pline("Changed key '%s' from \"%s\" to \"%s\".",
                       key2txt(key, buf2), prevec->ef_txt, cmdstr);
             } else if (!prevec) {
-                pline("Bound key '%s' to \"%s\".", key2txt(key, buf2), cmdstr);
+                pline("Bound key '%s' to \"%s\".",
+                      key2txt(key, buf2), cmdstr);
             }
         } else {
             pline("Key binding failed?!");
@@ -2215,8 +2234,7 @@ handler_rebind_keys(void)
     menu_item *picks = (menu_item *) 0;
     int clr = NO_COLOR;
 
-redo_rebind:
-
+ redo_rebind:
     win = create_nhwindow(NHW_MENU);
     start_menu(win, MENU_BEHAVE_STANDARD);
     any = cg.zeroany;
@@ -3371,7 +3389,8 @@ rhack(int key)
 
                     pline(
                 "The '%s' prefix should be followed by a movement command%s.",
-                          which, (up || down) ? " other than up or down" : "");
+                          which,
+                          (up || down) ? " other than up or down" : "");
                 }
                 res = ECMD_FAIL;
                 prefix_seen = 0;
@@ -3620,7 +3639,8 @@ getdir(const char *s)
             if (!cmdq->dirz) {
                 dirsym = gc.Cmd.dirchars[xytod(cmdq->dirx, cmdq->diry)];
             } else {
-                dirsym = gc.Cmd.dirchars[(cmdq->dirz > 0) ? DIR_DOWN : DIR_UP];
+                dirsym = gc.Cmd.dirchars[(cmdq->dirz > 0) ? DIR_DOWN
+                                                          : DIR_UP];
             }
         } else if (cmdq->typ == CMDQ_KEY) {
             dirsym = cmdq->key;
@@ -3734,7 +3754,7 @@ getdir(const char *s)
                 did_help = help_dir((s && *s == '^') ? dirsym : '\0',
                                     gc.Cmd.spkeys[NHKF_ESC],
                                     help_requested ? (const char *) 0
-                                                   : "Invalid direction key!");
+                                    : "Invalid direction key!");
                 if (help_requested)
                     goto retry;
             }

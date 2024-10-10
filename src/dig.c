@@ -1,4 +1,4 @@
-/* NetHack 3.7	dig.c	$NHDT-Date: 1709928001 2024/03/08 20:00:01 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.211 $ */
+/* NetHack 3.7	dig.c	$NHDT-Date: 1724613307 2024/08/25 19:15:07 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.219 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Michael Allison, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -371,7 +371,8 @@ dig(void)
     if (svc.context.digging.down) {
         struct trap *ttmp = t_at(dpx, dpy);
 
-        if (svc.context.digging.effort > 250 || (ttmp && ttmp->ttyp == HOLE)) {
+        if (svc.context.digging.effort > 250
+            || (ttmp && ttmp->ttyp == HOLE)) {
             (void) dighole(FALSE, FALSE, (coord *) 0);
             (void) memset((genericptr_t) &svc.context.digging, 0,
                           sizeof svc.context.digging);
@@ -491,7 +492,8 @@ dig(void)
             }
             if (svl.level.flags.is_maze_lev) {
                 lev->typ = ROOM, lev->flags = 0;
-            } else if (svl.level.flags.is_cavernous_lev && !in_town(dpx, dpy)) {
+            } else if (svl.level.flags.is_cavernous_lev
+                       && !in_town(dpx, dpy)) {
                 lev->typ = CORR, lev->flags = 0;
             } else {
                 lev->typ = DOOR, lev->doormask = D_NODOOR;
@@ -1287,7 +1289,8 @@ use_pick_axe2(struct obj *obj)
                 || svc.context.digging.down) {
                 if (flags.autodig && dig_target == DIGTYP_ROCK
                     && !svc.context.digging.down
-                    && u_at(svc.context.digging.pos.x, svc.context.digging.pos.y)
+                    && u_at(svc.context.digging.pos.x,
+                            svc.context.digging.pos.y)
                     && (svm.moves <= svc.context.digging.lastdigtime + 2
                         && svm.moves >= svc.context.digging.lastdigtime)) {
                     /* avoid messages if repeated autodigging */
@@ -1333,7 +1336,8 @@ use_pick_axe2(struct obj *obj)
               surface(u.ux, u.uy));
         u_wipe_engr(3);
     } else {
-        if (svc.context.digging.pos.x != u.ux || svc.context.digging.pos.y != u.uy
+        if (svc.context.digging.pos.x != u.ux
+            || svc.context.digging.pos.y != u.uy
             || !on_level(&svc.context.digging.level, &u.uz)
             || !svc.context.digging.down) {
             svc.context.digging.chew = FALSE;
@@ -2294,26 +2298,24 @@ wiz_debug_cmd_bury(void)
                 ++before;
 
             bury_objs(x, y);
+
+            for (otmp = svl.level.objects[x][y]; otmp; otmp = otmp->nexthere)
+                ++after;
         }
 
-    if (before == 0) { /* there was nothing here */
+    diff = before - after;
+    if (before == 0)
+        /* there was nothing here */
         pline("No objects here or adjacent to bury.");
-    } else {
-        for (x = u.ux - 1; x <= u.ux + 1; x++)
-            for (y = u.uy - 1; y <= u.uy + 1; y++) {
-                if (!isok(x, y))
-                    continue;
-                for (otmp = svl.level.objects[x][y]; otmp; otmp = otmp->nexthere)
-                    ++after;
-            }
-        diff = before - after;
-        /* will be 0 if only unburiable objects (The Amulet, &c) are present;
-           if uball got buried, uchain went away--count that as being buried */
-        if (diff == 0)
-            pline("No objects buried.");
-        else
-            pline("%d object%s buried.", diff, plur(diff));
-    }
+    else if (diff == 0)
+        /* before and after will be the same if only unburiable objects are
+           present (The Amulet, invocation items, Rider corpses, uchain when
+           uball doesn't get buried: carried or floor beyond burial range) */
+        pline("No objects buried.");
+    else
+        /* usual case; if uball got buried, uchain went away and won't be
+           counted as buried */
+        pline("%d object%s buried.", diff, plur(diff));
     return ECMD_OK;
 }
 #endif /* DEBUG */

@@ -1,10 +1,10 @@
-/* NetHack 3.7	spell.c	$NHDT-Date: 1718303203 2024/06/13 18:26:43 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.171 $ */
+/* NetHack 3.7	spell.c	$NHDT-Date: 1725227807 2024/09/01 21:56:47 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.173 $ */
 /*      Copyright (c) M. Stephenson 1988                          */
 /* NetHack may be freely redistributed.  See license for details. */
 
 #include "hack.h"
 
-/* spellmenu arguments; 0 thru n-1 used as svs.spl_book[] index when swapping */
+/* spellmenu arguments; 0..n-1 used as svs.spl_book[] index when swapping */
 #define SPELLMENU_CAST (-2)
 #define SPELLMENU_VIEW (-1)
 #define SPELLMENU_SORT (MAXSPELL) /* special menu entry */
@@ -438,7 +438,7 @@ learn(void)
         /* might be learning a new spellbook type or spellbook of blank paper;
            if so, persistent inventory will get updated */
         makeknown((int) booktype);
-        /* makeknown() calls update inventory when discovering something
+        /* makeknown() calls update_inventory() when discovering something
            new but is a no-op for something that's already known so wouldn't
            update persistent inventory to reflect faded book if spellbook of
            blank paper happens to already be discovered */
@@ -498,7 +498,8 @@ study_book(struct obj *spellbook)
            svc.context.spbook.book become erased somehow, resume reading it */
         && booktype != SPE_BLANK_PAPER) {
         You("continue your efforts to %s.",
-            (booktype == SPE_NOVEL) ? "read the novel" : "memorize the spell");
+            (booktype == SPE_NOVEL) ? "read the novel"
+                                    : "memorize the spell");
     } else {
         /* KMH -- Simplified this code */
         if (booktype == SPE_BLANK_PAPER) {
@@ -516,7 +517,8 @@ study_book(struct obj *spellbook)
                              spellbook->o_id)) {
                 if (!u.uconduct.literate++)
                     livelog_printf(LL_CONDUCT,
-                                   "became literate by reading %s", tribtitle);
+                                   "became literate by reading %s",
+                                   tribtitle);
 
                 check_unpaid(spellbook);
                 makeknown(booktype);
@@ -888,7 +890,8 @@ skill_based_spellbook_id(void)
         }
 
         if (objects[booktype].oc_level <= known_up_to_level)
-            makeknown(booktype);
+            /* makeknown(booktype) but don't exercise Wisdom */
+            discover_object(booktype, TRUE, FALSE);
     }
 }
 
@@ -2032,7 +2035,8 @@ DISABLE_WARNING_FORMAT_NONLITERAL
 staticfn boolean
 dospellmenu(
     const char *prompt,
-    int splaction, /* SPELLMENU_CAST, SPELLMENU_VIEW, or svs.spl_book[] index */
+    int splaction, /* SPELLMENU_CAST, SPELLMENU_VIEW, or
+                    * svs.spl_book[] index */
     int *spell_no)
 {
     winid tmpwin;

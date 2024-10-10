@@ -535,9 +535,9 @@ maketrap(coordxy x, coordxy y, int typ)
         else if (lev->typ == STONE || lev->typ == SCORR)
             (void) set_levltyp(x, y, CORR);
         else if (IS_WALL(lev->typ) || lev->typ == SDOOR)
-            (void) set_levltyp(x, y,  svl.level.flags.is_maze_lev ? ROOM
-                                      : svl.level.flags.is_cavernous_lev ? CORR
-                                        : DOOR);
+            (void) set_levltyp(x, y, svl.level.flags.is_maze_lev ? ROOM
+                                     : svl.level.flags.is_cavernous_lev ? CORR
+                                       : DOOR);
 
         unearth_objs(x, y);
         break;
@@ -788,7 +788,8 @@ animate_statue(
 
     comes_to_life = !canspotmon(mon) ? "disappears"
                     : golem_xform ? "turns into flesh"
-                      : (nonliving(mon->data) || is_vampshifter(mon)) ? "moves"
+                      : (nonliving(mon->data) || is_vampshifter(mon))
+                        ? "moves"
                         : "comes to life";
     if (u_at(x, y) || cause == ANIMATE_SPELL) {
         /* "the|your|Manlobbi's statue [of a wombat]" */
@@ -3333,7 +3334,8 @@ launch_obj(
                     /*FALLTHRU*/
                 case TELEP_TRAP:
                     if (cansee(x, y))
-                        pline_xy(x, y, "Suddenly the rolling boulder disappears!");
+                        pline_xy(x, y,
+                                 "Suddenly the rolling boulder disappears!");
                     else if (!Deaf)
                         You_hear("a rumbling stop abruptly.");
                     singleobj->otrapped = 0;
@@ -3666,7 +3668,8 @@ mintrap(struct monst *mtmp, unsigned mintrapflags)
 
         if (mtmp == u.usteed) {
             ; /* true when called from dotrap, inescapable is not an option */
-        } else if (Sokoban && (is_pit(tt) || is_hole(tt)) && !trap->madeby_u) {
+        } else if (Sokoban && (is_pit(tt) || is_hole(tt))
+                   && !trap->madeby_u) {
             ; /* nothing here, the trap effects will handle messaging */
         } else if (!forcetrap) {
             if (floor_trigger(tt) && check_in_air(mtmp, mintrapflags)) {
@@ -3850,7 +3853,8 @@ float_up(void)
     } else {
         You("start to float in the air!");
     }
-    if (u.usteed && !is_floater(u.usteed->data) && !is_flyer(u.usteed->data)) {
+    if (u.usteed && !is_floater(u.usteed->data)
+        && !is_flyer(u.usteed->data)) {
         if (Lev_at_will) {
             pline("%s magically floats up!", Monnam(u.usteed));
         } else {
@@ -4150,7 +4154,7 @@ dofiretrap(
             u.uhpmax -= rn2(min(u.uhpmax, num + 1)), disp.botl = TRUE;
         } /* note: no 'else' here */
         if (u.uhpmax < uhpmin) {
-            setuhpmax(min(olduhpmax, uhpmin)); /* sets disp.botl */
+            setuhpmax(min(olduhpmax, uhpmin), FALSE); /* sets disp.botl */
             if (!Drain_resistance)
                 losexp(NULL); /* never fatal when 'drainer' is Null */
         }
@@ -6211,7 +6215,8 @@ chest_trap(
         case 17:
             pline("A cloud of noxious gas billows from %s.", the(xname(obj)));
             if (rn2(3))
-                poisoned("gas cloud", A_STR, "cloud of poison gas", 15, FALSE);
+                poisoned("gas cloud", A_STR, "cloud of poison gas", 15,
+                         FALSE);
             else
                 create_gas_cloud(obj->ox, obj->oy, 1, 8);
             exercise(A_CON, FALSE);
@@ -6645,13 +6650,15 @@ lava_effects(void)
      * (3.7: that assumption is no longer true, but having boots be the first
      * thing to come into contact with lava makes sense.)
      */
-    if (uarmf && uarmf->in_use) {
+    if (uarmf && (uarmf->in_use
+                  || (is_organic(uarmf) && !uarmf->oerodeproof))) {
         obj = uarmf;
         pline("%s into flame!", Yobjnam2(obj, "burst"));
         ++burnmesgcount;
         iflags.in_lava_effects++; /* (see above) */
         (void) Boots_off();
-        useup(obj);
+        if (obj->o_id != protect_oid)
+            useup(obj);
         iflags.in_lava_effects--;
         ++burncount;
     }
@@ -6753,7 +6760,8 @@ lava_effects(void)
         boil_away = !Fire_resistance;
         /* if not fire resistant, sink_into_lava() will quickly be fatal;
            hero needs to escape immediately */
-        set_utrap((unsigned) (rn1(4, 4) + ((boil_away ? 2 : rn1(4, 12)) << 8)),
+        set_utrap((unsigned) (rn1(4, 4) + ((boil_away ? 2
+                                                      : rn1(4, 12)) << 8)),
                   TT_LAVA);
         You("sink into the %s%s!", waterbody_name(u.ux, u.uy),
             !boil_away ? ", but it only burns slightly"

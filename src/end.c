@@ -702,7 +702,7 @@ savelife(int how)
         u.ulevel = 1;
     uhpmin = minuhpmax(10);
     if (u.uhpmax < uhpmin)
-        setuhpmax(uhpmin);
+        setuhpmax(uhpmin, TRUE);
     u.uhp = min(u.uhpmax, givehp);
     if (Upolyd) /* Unchanging, or death which bypasses losing hit points */
         u.mh = min(u.mhmax, givehp);
@@ -937,8 +937,7 @@ fuzzer_savelife(int how)
      * Some debugging code pulled out of done() to unclutter it.
      * 'done_seq' is maintained in done().
      */
-    if (!program_state.panicking
-        && how != PANICKED && how != TRICKED) {
+    if (!program_state.panicking && how != PANICKED && how != TRICKED) {
         savelife(how);
 
         /* periodically restore characteristics plus lost experience
@@ -986,11 +985,14 @@ fuzzer_savelife(int how)
         svk.killer.name[0] = '\0';
         svk.killer.format = 0;
 
-        /* Guard against getting stuck in a loop if we die in one of
+        /*
+         * Guard against getting stuck in a loop if we die in one of
          * the few ways where life-saving isn't effective (cited case
          * was burning in lava when the level was too full to allow
-         * teleporting to safety).  Deal with it by recreating
-         * the level, if we're in wizmode */
+         * teleporting to safety).  Deal with it by recreating the level
+         * if we're in wizmode (always the case for debug_fuzzer unless
+         * player has used a debugger to fiddle with 'iflags' bits).
+         */
         if (gd.done_seq++ > gh.hero_seq + 100L) {
             if (!wizard)
                 return FALSE; /* can't deal with it */
@@ -1620,7 +1622,7 @@ container_contents(
                                  | (flags.sortpack ? SORTLOOT_PACK : 0));
                     sortedcobj = sortloot(&box->cobj, sortflags, FALSE,
                                           (boolean (*)(OBJ_P)) 0);
-                    for (srtc = sortedcobj; ((obj = srtc->obj) != 0); ++srtc) {
+                    for (srtc = sortedcobj; (obj = srtc->obj) != 0; ++srtc) {
                         if (identified) {
                             discover_object(obj->otyp, TRUE, FALSE);
                             obj->known = obj->bknown = obj->dknown
@@ -1746,9 +1748,9 @@ save_killers(NHFILE *nhfp)
     struct kinfo *kptr;
 
     if (perform_bwrite(nhfp)) {
-        for (kptr = &svk.killer; kptr != (struct kinfo *) 0; kptr = kptr->next) {
+        for (kptr = &svk.killer; kptr; kptr = kptr->next) {
             if (nhfp->structlevel)
-                bwrite(nhfp->fd, (genericptr_t) kptr, sizeof(struct kinfo));
+                bwrite(nhfp->fd, (genericptr_t) kptr, sizeof (struct kinfo));
         }
     }
     if (release_data(nhfp)) {
@@ -1902,9 +1904,11 @@ NH_abort(char *why USED_FOR_CRASHREPORT)
             gdb_prio++;
 
         if (gdb_prio > libc_prio) {
-            (void) (NH_panictrace_gdb() || (libc_prio && NH_panictrace_libc()));
+            (void) (NH_panictrace_gdb()
+                    || (libc_prio && NH_panictrace_libc()));
         } else {
-            (void) (NH_panictrace_libc() || (gdb_prio && NH_panictrace_gdb()));
+            (void) (NH_panictrace_libc()
+                    || (gdb_prio && NH_panictrace_gdb()));
         }
 
 #else /* VMS */

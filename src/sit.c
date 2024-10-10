@@ -275,7 +275,8 @@ dosit(void)
         You("are already sitting on %s.", mon_nam(u.usteed));
         return ECMD_OK;
     }
-    if (u.uundetected && is_hider(gy.youmonst.data) && u.umonnum != PM_TRAPPER)
+    if (u.uundetected && is_hider(gy.youmonst.data)
+        && u.umonnum != PM_TRAPPER) /* trapper can stay hidden on floor */
         u.uundetected = 0; /* no longer on the ceiling */
 
     if (!can_reach_floor(FALSE)) {
@@ -295,6 +296,9 @@ dosit(void)
             pline("%s has no lap.", Monnam(u.ustuck));
         return ECMD_OK;
     } else if (is_pool(u.ux, u.uy) && !Underwater) { /* water walking */
+        goto in_water;
+    } else if (Upolyd && u.umonnum == PM_GREMLIN
+               && (levl[u.ux][u.uy].typ == FOUNTAIN || is_pool(u.ux, u.uy))) {
         goto in_water;
     }
 
@@ -320,7 +324,8 @@ dosit(void)
                    pline("Squelch!");
                 }
                 useupf(obj, obj->quan);
-            } else if (!(Is_box(obj) || objects[obj->otyp].oc_material == CLOTH))
+            } else if (!(Is_box(obj)
+                         || objects[obj->otyp].oc_material == CLOTH))
                 pline("It's not very comfortable...");
         }
     } else if (trap != 0 || (u.utrap && (u.utraptype >= TT_LAVA))) {
@@ -371,10 +376,18 @@ dosit(void)
     } else if (is_pool(u.ux, u.uy) && !eggs_in_water(gy.youmonst.data)) {
  in_water:
         You("sit in the %s.", hliquid("water"));
-        if (!rn2(10) && uarm)
-            (void) water_damage(uarm, "armor", TRUE);
-        if (!rn2(10) && uarmf && uarmf->otyp != WATER_WALKING_BOOTS)
-            (void) water_damage(uarm, "armor", TRUE);
+        if (Upolyd && u.umonnum == PM_GREMLIN) {
+            if (split_mon(&gy.youmonst, (struct monst *) 0)) {
+                if (levl[u.ux][u.uy].typ == FOUNTAIN)
+                    dryup(u.ux, u.uy, TRUE);
+            }
+            /* splitting--or failing to do so--protects gear from the water */
+        } else {
+            if (!rn2(10) && uarm)
+                (void) water_damage(uarm, "armor", TRUE);
+            if (!rn2(10) && uarmf && uarmf->otyp != WATER_WALKING_BOOTS)
+                (void) water_damage(uarm, "armor", TRUE);
+        }
     } else if (IS_SINK(typ)) {
         You(sit_message, defsyms[S_sink].explanation);
         Your("%s gets wet.",
