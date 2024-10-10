@@ -26,8 +26,6 @@
 
 #define DUMPLOG
 
-#undef DLB
-
 #undef MAIL
 #undef DEF_PAGER
 #undef DEF_MAILREADER
@@ -41,8 +39,6 @@
 
 #define USER_SOUNDS
 // #define CHANGE_COLOR
-
-char ** get_aborted_games();
 
 #endif /* ANDROIDCONF_H */
 #endif /* ANDROID */
