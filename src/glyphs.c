@@ -121,6 +121,7 @@ glyphrep_to_custom_map_entries(
 
     if (!glyphid_cache)
         reslt = 1; /* for debugger use only; no cache available */
+    nhUse(reslt);
 
     Snprintf(buf, sizeof buf, "%s", op);
     c_unicode = c_colorval = (char *) 0;
@@ -250,7 +251,7 @@ glyph_find_core(
                     break;
                 case find_pm:
                     if (glyph_is_monster(glyph)
-                        && monsym(&mons[glyph_to_mon(glyph)])
+                        && mons[glyph_to_mon(glyph)].mlet
                            == findwhat->val)
                         do_callback = TRUE;
                     break;
@@ -470,6 +471,7 @@ glyphrep(const char *op)
 
     if (!glyphid_cache)
         reslt = 1;      /* for debugger use only; no cache available */
+    nhUse(reslt);
     reslt = glyphrep_to_custom_map_entries(op, &glyph);
     if (reslt)
         return 1;
@@ -566,14 +568,21 @@ apply_customizations(
             }
         }
     }
-    if (at_least_one) {
-        shuffle_customizations();
-    }
+    iflags.pending_customizations = at_least_one;
 }
 
 /* Shuffle the customizations to match shuffled object descriptions,
  * so a red potion isn't displayed with a blue customization, and so on.
  */
+
+void
+maybe_shuffle_customizations(void)
+{
+    if (iflags.pending_customizations) {
+        shuffle_customizations();
+        iflags.pending_customizations = 0;
+    }
+}
 
 #if 0
 staticfn void
@@ -675,12 +684,14 @@ shuffle_customizations(void)
                 tmp_customcolor[i] = other_customcolor;
                 tmp_color256idx[i] = other_color256idx;
 #ifdef ENHANCED_SYMBOLS
-                tmp_u[i] = (struct unicode_representation *)
-                           alloc(sizeof *tmp_u[i]);
-                *tmp_u[i] = *other;
-                if (other->utf8str != NULL) {
-                    tmp_u[i]->utf8str = (uint8 *)
-                                        dupstr((const char *) other->utf8str);
+                if (other) {
+                    tmp_u[i] = (struct unicode_representation *) alloc(
+                        sizeof *tmp_u[i]);
+                    *tmp_u[i] = *other;
+                    if (other->utf8str != NULL) {
+                        tmp_u[i]->utf8str =
+                            (uint8 *) dupstr((const char *) other->utf8str);
+                    }
                 }
 #endif
             } else {
@@ -815,7 +826,7 @@ parse_id(
     int i = 0, j, mnum, glyph,
         pm_offset = 0, oc_offset = 0, cmap_offset = 0,
         pm_count = 0, oc_count = 0, cmap_count = 0;
-    boolean skip_base = FALSE, skip_this_one, dump_ids = FALSE,
+    boolean skip_base = FALSE, skip_this_one = FALSE, dump_ids = FALSE,
             filling_cache = FALSE, is_S = FALSE, is_G = FALSE;
     char buf[4][QBUFSZ];
 
@@ -906,30 +917,26 @@ parse_id(
                 } else if (glyph_is_body(glyph)) {
                     /* buf2 will hold the distinguishing prefix */
                     /* buf3 will hold the base name */
-                    buf2 = ""; /* superfluous */
+                    buf2 = glyph_is_body_piletop(glyph)
+                           ? "piletop_body_"
+                           : "body_";
                     buf3 = monsdump[glyph_to_body_corpsenm(glyph)].nm;
-                    if (glyph_is_body_piletop(glyph)) {
-                        buf2 = "piletop_body_";
-                    } else {
-                        buf2 = "body_";
-                    }
                     Strcpy(buf[0], "G_");
                     Strcat(buf[0], buf2);
                     Strcat(buf[0], buf3);
                 } else if (glyph_is_statue(glyph)) {
                     /* buf2 will hold the distinguishing prefix */
                     /* buf3 will hold the base name */
-                    buf2 = "";
+                    buf2 = glyph_is_fem_statue_piletop(glyph)
+                           ? "piletop_statue_of_female_"
+                           : glyph_is_fem_statue(glyph)
+                             ? "statue_of_female_"
+                             : glyph_is_male_statue_piletop(glyph)
+                               ? "piletop_statue_of_male_"
+                               : glyph_is_male_statue(glyph)
+                                 ? "statue_of_male_"
+                                 : ""; /* shouldn't happen */
                     buf3 = monsdump[glyph_to_statue_corpsenm(glyph)].nm;
-                    if (glyph_is_fem_statue_piletop(glyph)) {
-                        buf2 = "piletop_statue_of_female_";
-                    } else if (glyph_is_fem_statue(glyph)) {
-                        buf2 = "statue_of_female_";
-                    } else if (glyph_is_male_statue_piletop(glyph)) {
-                        buf2 = "piletop_statue_of_male_";
-                    } else if (glyph_is_male_statue(glyph)) {
-                        buf2 = "statue_of_male_";
-                    }
                     Strcpy(buf[0], "G_");
                     Strcat(buf[0], buf2);
                     Strcat(buf[0], buf3);
@@ -937,8 +944,6 @@ parse_id(
                     i = glyph_to_obj(glyph);
                     /* buf2 will hold the distinguishing prefix */
                     /* buf3 will hold the base name */
-                    buf2 = "";
-                    buf3 = "";
                     if (((i > SCR_STINKING_CLOUD) && (i < SCR_MAIL))
                         || ((i > WAN_LIGHTNING) && (i < GOLD_PIECE)))
                         skip_this_one = TRUE;
@@ -958,6 +963,8 @@ parse_id(
                             buf2 = "ring of ";
                         else if (i == LAND_MINE)
                             buf2 = "unset ";
+                        else
+                            buf2 = "";
                         buf3 = (i == SCR_BLANK_PAPER) ? "blank scroll"
                                : (i == SPE_BLANK_PAPER) ? "blank spellbook"
                                  : (i == SLIME_MOLD) ? "slime mold"
@@ -1047,7 +1054,6 @@ parse_id(
                         j = glyph - GLYPH_SWALLOW_OFF;
                         cmap = glyph_to_swallow(glyph);
                         mnum = j / ((S_sw_br - S_sw_tl) + 1);
-                        i = cmap - S_sw_tl;
                         Strcpy(buf[3], "swallow ");
                         Strcat(buf[3], monsdump[mnum].nm);
                         Strcat(buf[3], " ");

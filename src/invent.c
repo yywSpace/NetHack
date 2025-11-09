@@ -1,4 +1,4 @@
-/* NetHack 3.7	invent.c	$NHDT-Date: 1724094299 2024/08/19 19:04:59 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.516 $ */
+/* NetHack 3.7	invent.c	$NHDT-Date: 1737384766 2025/01/20 06:52:46 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.531 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
 /*-Copyright (c) Derek S. Ray, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
@@ -1230,6 +1230,12 @@ hold_another_object(
            dropped, avoid perminv update when temporarily adding it */
         obj = addinv_core0(obj, (struct obj *) 0, FALSE);
         goto drop_it;
+    } else if (obj->otyp == CORPSE
+               && !u_safe_from_fatal_corpse(obj, st_all)
+               && obj->wishedfor) {
+        obj->wishedfor = 0;
+        obj = addinv_core0(obj, (struct obj *) 0, FALSE);
+        goto drop_it;
     } else {
         long oquan = obj->quan;
         int prev_encumbr = near_capacity(); /* before addinv() */
@@ -1367,6 +1373,11 @@ freeinv_core(struct obj *obj)
     } else if (obj->otyp == FIGURINE && obj->timed) {
         (void) stop_timer(FIG_TRANSFORM, obj_to_any(obj));
     }
+
+    if (obj == svc.context.tin.tin) {
+        svc.context.tin.tin = (struct obj *) 0;
+        svc.context.tin.o_id = 0;
+    }
 }
 
 /* remove an object from the hero's inventory */
@@ -1470,6 +1481,18 @@ carrying(int type)
     /* this could be replaced by 'return m_carrying(&gy.youmonst, type);' */
     for (otmp = gi.invent; otmp; otmp = otmp->nobj)
         if (otmp->otyp == type)
+            break;
+    return otmp;
+}
+
+/* return inventory object of type that will petrify on touch */
+struct obj *
+carrying_stoning_corpse(void)
+{
+    struct obj *otmp;
+
+    for (otmp = gi.invent; otmp; otmp = otmp->nobj)
+        if (otmp->otyp == CORPSE && touch_petrifies(&mons[otmp->corpsenm]))
             break;
     return otmp;
 }
@@ -2224,15 +2247,17 @@ ggetobj(const char *word, int (*fn)(OBJ_P), int mx,
             return 0;
         if (strchr(buf, 'i')) {
             char ailets[1+26+26+1+5+1]; /* $ + a-z + A-Z + # + slop + \0 */
-            struct obj *otmp;
+            struct obj *otmp, *nextobj;
 
             /* applicable inventory letters; if empty, show entire invent */
             ailets[0] = '\0';
             if (ofilter)
-                for (otmp = gi.invent; otmp; otmp = otmp->nobj)
+                for (otmp = gi.invent; otmp; otmp = nextobj) {
+                    nextobj = otmp->nobj;
                     /* strchr() check: limit overflow items to one '#' */
                     if ((*ofilter)(otmp) && !strchr(ailets, otmp->invlet))
                         (void) strkitten(ailets, otmp->invlet);
+                }
             if (display_inventory(ailets, TRUE) == '\033')
                 return 0;
         } else
@@ -2443,6 +2468,7 @@ askchain(
         switch (sym) {
         case 'a':
             allflag = 1;
+            FALLTHROUGH;
             /*FALLTHRU*/
         case 'y':
             tmp = (*fn)(otmp);
@@ -2461,10 +2487,13 @@ askchain(
             cnt += tmp;
             if (--mx == 0)
                 goto ret;
+            FALLTHROUGH;
             /*FALLTHRU*/
         case 'n':
             if (nodot)
                 dud++;
+            FALLTHROUGH;
+            /*FALLTHRU*/
         default:
             break;
         case 'q':
@@ -2513,7 +2542,7 @@ fully_identify_obj(struct obj *otmp)
 {
     makeknown(otmp->otyp);
     if (otmp->oartifact)
-        discover_artifact((coordxy) otmp->oartifact);
+        discover_artifact((xint16) otmp->oartifact);
     otmp->known = otmp->dknown = otmp->bknown = otmp->rknown = 1;
     set_cknown_lknown(otmp); /* set otmp->{cknown,lknown} if applicable */
     if (otmp->otyp == EGG && otmp->corpsenm != NON_PM)
@@ -2775,7 +2804,7 @@ xprname(
     char suffix[80]; /* plenty of room for count and hallucinatory currency */
     int sfxlen, txtlen; /* signed int for %*s formatting */
     const char *fmt;
-    boolean use_invlet = (flags.invlet_constant
+    boolean use_invlet = (flags.invlet_constant && obj != NULL
                           && let != CONTAINED_SYM && let != HANDS_SYM);
     long savequan = 0L;
 
@@ -2790,8 +2819,10 @@ xprname(
      *  >  Then the object is contained and doesn't have an inventory letter.
      */
     fmt = "%c - %.*s%s";
-    if (!txt)
+    if (!txt) {
+        assert(obj != NULL);
         txt = doname(obj);
+    }
     txtlen = (int) strlen(txt);
 
     if (cost != 0L || let == '*') {
@@ -2949,141 +2980,142 @@ ia_addmenu(winid win, int act, char let, const char *txt)
              ATR_NONE, clr, txt, MENU_ITEMFLAGS_NONE);
 }
 
+/* set up a command to execute on a specific item next */
 staticfn void
 itemactions_pushkeys(struct obj *otmp, int act)
 {
-        switch (act) {
-        default:
-            impossible("Unknown item action");
-        case IA_NONE:
-            break;
-        case IA_UNWIELD:
-            cmdq_add_ec(CQ_CANNED, (otmp == uwep) ? dowield
-                        : (otmp == uswapwep) ? remarm_swapwep
-                          : (otmp == uquiver) ? dowieldquiver
-                            : donull); /* can't happen */
-            cmdq_add_key(CQ_CANNED, '-');
-            break;
-        case IA_APPLY_OBJ:
-            cmdq_add_ec(CQ_CANNED, doapply);
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_DIP_OBJ:
-            /* #altdip instead of normal #dip - takes potion to dip into
-               first (the inventory item instigating this) and item to
-               be dipped second, also ignores floor features such as
-               fountain/sink so we don't need to force m-prefix here */
-            cmdq_add_ec(CQ_CANNED, dip_into);
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_NAME_OBJ:
-        case IA_NAME_OTYP:
-            cmdq_add_ec(CQ_CANNED, docallcmd);
-            cmdq_add_key(CQ_CANNED, (act == IA_NAME_OBJ) ? 'i' : 'o');
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_DROP_OBJ:
-            cmdq_add_ec(CQ_CANNED, dodrop);
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_EAT_OBJ:
-            /* start with m-prefix; for #eat, it means ignore floor food
-               if present and eat food from invent */
-            cmdq_add_ec(CQ_CANNED, do_reqmenu);
-            cmdq_add_ec(CQ_CANNED, doeat);
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_ENGRAVE_OBJ:
-            cmdq_add_ec(CQ_CANNED, doengrave);
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_FIRE_OBJ:
-            cmdq_add_ec(CQ_CANNED, dofire);
-            break;
-        case IA_ADJUST_OBJ:
-            cmdq_add_ec(CQ_CANNED, doorganize); /* #adjust */
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_ADJUST_STACK:
-            cmdq_add_ec(CQ_CANNED, adjust_split); /* #altadjust */
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_SACRIFICE:
-            cmdq_add_ec(CQ_CANNED, dosacrifice);
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_BUY_OBJ:
-            cmdq_add_ec(CQ_CANNED, dopay);
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_QUAFF_OBJ:
-            /* start with m-prefix; for #quaff, it means ignore fountain
-               or sink if present and drink a potion from invent */
-            cmdq_add_ec(CQ_CANNED, do_reqmenu);
-            cmdq_add_ec(CQ_CANNED, dodrink);
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_QUIVER_OBJ:
-            cmdq_add_ec(CQ_CANNED, dowieldquiver);
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_READ_OBJ:
-            cmdq_add_ec(CQ_CANNED, doread);
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_RUB_OBJ:
-            cmdq_add_ec(CQ_CANNED, dorub);
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_THROW_OBJ:
-            cmdq_add_ec(CQ_CANNED, dothrow);
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_TAKEOFF_OBJ:
-            cmdq_add_ec(CQ_CANNED, dotakeoff);
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_TIP_CONTAINER:
-            /* start with m-prefix to skip floor containers;
-               for menustyle:Traditional when more than one floor
-               container is present, player will get a #tip menu and
-               have to pick the "tip something being carried" choice,
-               then this item will be already chosen from inventory;
-               suboptimal but possibly an acceptable tradeoff since
-               combining item actions with use of traditional ggetobj()
-               is an unlikely scenario */
-            cmdq_add_ec(CQ_CANNED, do_reqmenu);
-            cmdq_add_ec(CQ_CANNED, dotip);
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_INVOKE_OBJ:
-            cmdq_add_ec(CQ_CANNED, doinvoke);
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_WIELD_OBJ:
-            cmdq_add_ec(CQ_CANNED, dowield);
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_WEAR_OBJ:
-            cmdq_add_ec(CQ_CANNED, dowear);
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_SWAPWEAPON:
-            cmdq_add_ec(CQ_CANNED, doswapweapon);
-            break;
-        case IA_TWOWEAPON:
-            cmdq_add_ec(CQ_CANNED, dotwoweapon);
-            break;
-        case IA_ZAP_OBJ:
-            cmdq_add_ec(CQ_CANNED, dozap);
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        case IA_WHATIS_OBJ:
-            cmdq_add_ec(CQ_CANNED, dowhatis); /* "/" command */
-            cmdq_add_key(CQ_CANNED, 'i');     /* "i" == item from inventory */
-            cmdq_add_key(CQ_CANNED, otmp->invlet);
-            break;
-        }
+    switch (act) {
+    default:
+        impossible("Unknown item action %d", act);
+        break;
+    case IA_NONE:
+        break;
+    case IA_UNWIELD:
+        cmdq_add_ec(CQ_CANNED, (otmp == uwep) ? dowield
+                    : (otmp == uswapwep) ? remarm_swapwep
+                      : (otmp == uquiver) ? dowieldquiver
+                        : donull); /* can't happen */
+        cmdq_add_key(CQ_CANNED, HANDS_SYM);
+        break;
+    case IA_APPLY_OBJ:
+        cmdq_add_ec(CQ_CANNED, doapply);
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_DIP_OBJ:
+        /* #altdip instead of normal #dip - takes potion to dip into
+           first (the inventory item instigating this) and item to
+           be dipped second, also ignores floor features such as
+           fountain/sink so we don't need to force m-prefix here */
+        cmdq_add_ec(CQ_CANNED, dip_into);
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_NAME_OBJ:
+    case IA_NAME_OTYP:
+        cmdq_add_ec(CQ_CANNED, docallcmd);
+        cmdq_add_key(CQ_CANNED, (act == IA_NAME_OBJ) ? 'i' : 'o');
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_DROP_OBJ:
+        cmdq_add_ec(CQ_CANNED, dodrop);
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_EAT_OBJ:
+        /* start with m-prefix; for #eat, it means ignore floor food
+           if present and eat food from invent */
+        cmdq_add_ec(CQ_CANNED, do_reqmenu);
+        cmdq_add_ec(CQ_CANNED, doeat);
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_ENGRAVE_OBJ:
+        cmdq_add_ec(CQ_CANNED, doengrave);
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_FIRE_OBJ:
+        cmdq_add_ec(CQ_CANNED, dofire);
+        break;
+    case IA_ADJUST_OBJ:
+        cmdq_add_ec(CQ_CANNED, doorganize); /* #adjust */
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_ADJUST_STACK:
+        cmdq_add_ec(CQ_CANNED, adjust_split); /* #altadjust */
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_SACRIFICE:
+        cmdq_add_ec(CQ_CANNED, dosacrifice);
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_BUY_OBJ:
+        cmdq_add_ec(CQ_CANNED, dopay);
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_QUAFF_OBJ:
+        /* start with m-prefix; for #quaff, it means ignore fountain
+           or sink if present and drink a potion from invent */
+        cmdq_add_ec(CQ_CANNED, do_reqmenu);
+        cmdq_add_ec(CQ_CANNED, dodrink);
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_QUIVER_OBJ:
+        cmdq_add_ec(CQ_CANNED, dowieldquiver);
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_READ_OBJ:
+        cmdq_add_ec(CQ_CANNED, doread);
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_RUB_OBJ:
+        cmdq_add_ec(CQ_CANNED, dorub);
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_THROW_OBJ:
+        cmdq_add_ec(CQ_CANNED, dothrow);
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_TAKEOFF_OBJ:
+        cmdq_add_ec(CQ_CANNED, ia_dotakeoff); /* #altdotakeoff */
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_TIP_CONTAINER:
+        /* start with m-prefix to skip floor containers;
+           for menustyle:Traditional when more than one floor container
+           is present, player will get a #tip menu and have to pick
+           the "tip something being carried" choice, then this item
+           will be already chosen from inventory; suboptimal but
+           possibly an acceptable tradeoff since combining item actions
+           with use of traditional ggetobj() is an unlikely scenario */
+        cmdq_add_ec(CQ_CANNED, do_reqmenu);
+        cmdq_add_ec(CQ_CANNED, dotip);
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_INVOKE_OBJ:
+        cmdq_add_ec(CQ_CANNED, doinvoke);
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_WIELD_OBJ:
+        cmdq_add_ec(CQ_CANNED, dowield);
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_WEAR_OBJ:
+        cmdq_add_ec(CQ_CANNED, dowear);
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_SWAPWEAPON:
+        cmdq_add_ec(CQ_CANNED, doswapweapon);
+        break;
+    case IA_TWOWEAPON:
+        cmdq_add_ec(CQ_CANNED, dotwoweapon);
+        break;
+    case IA_ZAP_OBJ:
+        cmdq_add_ec(CQ_CANNED, dozap);
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    case IA_WHATIS_OBJ:
+        cmdq_add_ec(CQ_CANNED, dowhatis); /* "/" command */
+        cmdq_add_key(CQ_CANNED, 'i');     /* "i" == item from inventory */
+        cmdq_add_key(CQ_CANNED, otmp->invlet);
+        break;
+    }
 }
 
 /* Show menu of possible actions hero could do with item otmp */
@@ -3301,15 +3333,33 @@ itemactions(struct obj *otmp)
 
     /* P: put on accessory */
     if (!already_worn) {
-        if (otmp->oclass == RING_CLASS || otmp->otyp == MEAT_RING)
-            ia_addmenu(win, IA_WEAR_OBJ, 'P', "Put this ring on");
-        else if (otmp->oclass == AMULET_CLASS)
-            ia_addmenu(win, IA_WEAR_OBJ, 'P', "Put this amulet on");
-        else if (otmp->otyp == TOWEL || otmp->otyp == BLINDFOLD)
-            ia_addmenu(win, IA_WEAR_OBJ, 'P',
-                       "Use this to blindfold yourself");
-        else if (otmp->otyp == LENSES)
-            ia_addmenu(win, IA_WEAR_OBJ, 'P', "Put these lenses on");
+        /* if 'otmp' is worn, we'll skip 'P' and show 'R' below;
+           if not worn, we show 'P - Put on this <simple-item>' if
+           the slot is available, or 'P - <unavailable>'; for the latter,
+           'P' will fail but we don't want to omit the choice because
+           item actions can be used to learn commands */
+        *buf = '\0';
+        if (otmp->oclass == AMULET_CLASS) {
+            Strcpy(buf, !uamul ? "Put this amulet on"
+                               : "[already wearing an amulet]");
+        } else if (otmp->oclass == RING_CLASS || otmp->otyp == MEAT_RING) {
+            if (!uleft || !uright)
+                Strcpy(buf, "Put this ring on");
+            else
+                Sprintf(buf, "[both ring %s in use]",
+                        makeplural(body_part(FINGER)));
+        } else if (otmp->otyp == BLINDFOLD || otmp->otyp == TOWEL
+                   || otmp->otyp == LENSES) {
+            if (ublindf)
+                Strcpy(buf, "[already wearing eyewear]");
+            else if (otmp->otyp == LENSES)
+                Strcpy(buf, "Put these lenses on");
+            else
+                Sprintf(buf, "Put this on%s",
+                        (otmp->otyp == TOWEL) ? " to blindfold yourself" : "");
+        }
+        if (*buf)
+            ia_addmenu(win, IA_WEAR_OBJ, 'P', buf);
     }
 
     /* q: drink item */
@@ -3333,8 +3383,14 @@ itemactions(struct obj *otmp)
         ia_addmenu(win, IA_READ_OBJ, 'r', buf);
 
     /* R: remove accessory or rub item */
-    if (otmp->owornmask & W_ACCESSORY)
-        ia_addmenu(win, IA_TAKEOFF_OBJ, 'R', "Remove this accessory");
+    if (otmp->owornmask & W_ACCESSORY) {
+        Sprintf(buf, "Remove this %s",
+                (otmp->owornmask & W_AMUL) ? "amulet"
+                : (otmp->owornmask & W_RING) ? "ring"
+                  : (otmp->owornmask & W_TOOL) ? "eyewear"
+                    : "accessory"); /* catchall -- can't happen */
+        ia_addmenu(win, IA_TAKEOFF_OBJ, 'R', buf);
+    }
     if (otmp->otyp == OIL_LAMP || otmp->otyp == MAGIC_LAMP
         || otmp->otyp == BRASS_LANTERN) {
         Sprintf(buf, "Rub this %s", simpleonames(otmp));
@@ -3412,8 +3468,22 @@ itemactions(struct obj *otmp)
 
     /* W: wear armor */
     if (!already_worn) {
-        if (otmp->oclass == ARMOR_CLASS)
-            ia_addmenu(win, IA_WEAR_OBJ, 'W', "Wear this armor");
+        if (otmp->oclass == ARMOR_CLASS) {
+            /* if 'otmp' is worn we skip 'W' (and show 'T' above instead);
+               if it isn't, we either show "W - wear this" if otmp's slot
+               isn't populated, or "W - [already wearing <simple-armor>]";
+               for the latter, picking 'W' will fail but we don't want to
+               omit 'W' in this situation */
+            long Wmask = armcat_to_wornmask(objects[otmp->otyp].oc_armcat);
+            struct obj *o = wearmask_to_obj(Wmask);
+
+            if (!o)
+                Strcpy(buf, "Wear this armor");
+            else
+                Sprintf(buf, "[already wearing %s]", an(armor_simple_name(o)));
+
+            ia_addmenu(win, IA_WEAR_OBJ, 'W', buf);
+        }
     }
 
     /* x: Swap main and readied weapon */
@@ -3491,7 +3561,7 @@ dispinv_with_action(
     boolean use_inuse_ordering, /* affects sortloot() and header labels */
     const char *alt_label)      /* alternate value for in-use "Accessories" */
 {
-    struct obj *otmp;
+    struct obj *otmp, *nextobj;
     const char *save_accessories = 0;
     char c, save_sortloot = 0;
     unsigned len = lets ? (unsigned) strlen(lets) : 0U;
@@ -3517,9 +3587,11 @@ dispinv_with_action(
     iflags.force_invmenu = save_force_invmenu;
 
     if (c && c != '\033') {
-        for (otmp = gi.invent; otmp; otmp = otmp->nobj)
+        for (otmp = gi.invent; otmp; otmp = nextobj) {
+            nextobj = otmp->nobj;
             if (otmp->invlet == c)
                 return itemactions(otmp);
+        }
     }
     return ECMD_OK;
 }
@@ -3600,11 +3672,10 @@ display_pickinv(
     Loot *sortedinvent, *srtinv;
     int8_t prevorderclass;
     boolean (*filter)(struct obj *) = (boolean (*)(OBJ_P)) 0;
-
     boolean wizid = (wizard && iflags.override_ID), gotsomething = FALSE;
     int clr = NO_COLOR, menu_behavior = MENU_BEHAVE_STANDARD;
     boolean show_gold = TRUE, inuse_only = FALSE, skipped_gold = FALSE,
-            doing_perm_invent = FALSE, save_flags_sortpack = flags.sortpack,
+            doing_perm_invent = FALSE, save_flags_sortpack,
             usextra = (xtra_choice && allowxtra);
 
     if (lets && !*lets)
@@ -3632,8 +3703,8 @@ display_pickinv(
         win = WIN_INVEN;
         menu_behavior = MENU_BEHAVE_PERMINV;
         prepare_perminvent(win);
-        show_gold = ((wri_info.fromcore.invmode & InvShowGold) != 0);
-        inuse_only = ((wri_info.fromcore.invmode & InvInUse) != 0);
+        show_gold = ((wri_info.fromcore.invmode & (enum inv_modes) InvShowGold) != 0);
+        inuse_only = ((wri_info.fromcore.invmode & (enum inv_modes) InvInUse) != 0);
         doing_perm_invent = TRUE;
     }
     /*
@@ -3976,6 +4047,13 @@ display_inventory(const char *lets, boolean want_reply)
                            FALSE, want_reply, (long *) 0);
 }
 
+void
+repopulate_perminvent(void)
+{
+        (void) display_pickinv(NULL, (char *) 0, (char *) 0,
+                               FALSE, FALSE, (long *) 0);
+}
+
 /*
  * Show what is current using inventory letters.
  *
@@ -4199,7 +4277,7 @@ dounpaid(
     }
 
     win = create_nhwindow(NHW_MENU);
-    cost = totcost = 0;
+    totcost = 0L;
     num_so_far = 0; /* count of # printed so far */
     if (!flags.invlet_constant)
         reassign();
@@ -4910,6 +4988,8 @@ mergable(
         return TRUE;
 
     if (obj->cursed != otmp->cursed || obj->blessed != otmp->blessed)
+        return FALSE;
+    if ((obj->how_lost & ~LOSTOVERRIDEMASK) != 0)
         return FALSE;
 #if 0   /* don't require 'bypass' to match; that results in items dropped
          * via 'D' not stacking with compatible items already on the floor;
@@ -6122,6 +6202,12 @@ sync_perminvent(void)
             || in_perm_invent_toggled) {
             wri = ctrl_nhwindow(WIN_INVEN, request_settings, &wri_info);
             if (wri != 0) {
+                if ((wri->tocore.tocore_flags & (too_early)) != 0) {
+                    /* don't be too noisy about this as it's really
+                     * a startup timing issue. Just set a marker. */
+                    iflags.perm_invent_pending = TRUE;
+                    return;
+                }
                 if ((wri->tocore.tocore_flags & (too_small | prohibited))
                     != 0) {
                     /* sizes aren't good enough */
