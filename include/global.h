@@ -172,6 +172,10 @@ typedef uchar nhsym;
 #include "windconf.h"
 #endif
 
+#ifdef ANDROID
+#include "androidconf.h"
+#endif
+
 #include "warnings.h"
 
 /* amiconf.h needs to be the last nested #include of config.h because
